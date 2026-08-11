@@ -342,9 +342,17 @@ def plain_markdown(text):
     return "\n".join(out).strip()
 
 
-def update_command():
+def update_command(ref=None):
+    """The line that installs `ref` — by default the release we just saw.
+
+    Pinning it matters: the window says "v1.2.3 is out", and installing main
+    could hand over something else entirely.
+    """
+    if ref is None:
+        ref = read_update_cache().get("latest", "")
+    prefix = "CCDO_REF=%s " % ref if ref else ""
     return ("curl -fsSL https://raw.githubusercontent.com/%s/main/install.sh"
-            " | bash" % REPO)
+            " | %sbash" % (REPO, prefix))
 
 
 def prefers_dark(settings=None):

@@ -455,6 +455,10 @@ ccdo update --apply     # run it, then restart the tray
 something to do behind your back, so without the flag the command is only
 printed. It asks before running unless you pass `--yes`.
 
+The command pins the release it just told you about (`CCDO_REF=v1.2.3`).
+Installing `main` instead would have handed over whatever happened to be on
+the branch, which is not what the update notice said was coming.
+
 Once a day the tray checks in the background whether a newer release exists and
 adds an **Update available** line to the menu if so. Asking on every start
 would be wasteful and would tie startup to a network delay; failure is silent.

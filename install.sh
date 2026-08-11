@@ -12,8 +12,15 @@ if [ -z "$SRC" ] || [ ! -f "$SRC/ccdo.py" ]; then
   need curl; need tar
   SRC="$(mktemp -d)"
   trap 'rm -rf "$SRC"' EXIT
-  curl -fsSL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" \
-    | tar xz -C "$SRC" --strip-components=1
+  # CCDO_REF pins what to install. `ccdo update` passes the tag it just told
+  # you about, so you get that release and not whatever main happens to be.
+  REF="${CCDO_REF:-main}"
+  case "$REF" in
+    v*) url="https://github.com/$REPO/archive/refs/tags/$REF.tar.gz" ;;
+    *)  url="https://github.com/$REPO/archive/refs/heads/$REF.tar.gz" ;;
+  esac
+  echo "   ref: $REF"
+  curl -fsSL "$url" | tar xz -C "$SRC" --strip-components=1
 fi
 case "$(uname -s)" in
   Darwin) OS=mac ;;
