@@ -9,6 +9,13 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.6] - 2026-08-12
+
+### Fixed
+
+- **macos:** draw the tray icon so it does not need an SVG loader (a2089d6)
+- **i18n:** translate the CLI output and the strings the sweep missed (56dfc03)
+- **install:** install for an interpreter that can import gi (3b01af2)
 ## [1.0.5] - 2026-08-12
 
 ### Added
