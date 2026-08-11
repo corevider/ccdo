@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.7] - 2026-08-12
+
+### Added
+
+- **macos:** support macOS properly — GTK, the menu bar and launchd (51b1b69)
 ## [1.0.6] - 2026-08-12
 
 ### Fixed
