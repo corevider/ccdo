@@ -3648,13 +3648,18 @@ def start_gui(use_statusicon=False):
             raw.connect("clicked", lambda *_: open_in_editor(CONFIG_PATH))
             box.pack_start(raw, False, False, 0)
 
+            # The version sits outside the scrolled area: inside it, you had to
+            # scroll to the very bottom to find out what you were running.
             latest = read_update_cache().get("latest", "")
             ver = Gtk.Label(xalign=0, label=(
                 _("ccdo %s  ·  new version available: %s") % (VERSION, latest)
                 if newer_version(latest) else "ccdo %s" % VERSION))
             ver.get_style_context().add_class("jd-hint")
-            ver.set_margin_top(10)
-            box.pack_start(ver, False, False, 0)
+            ver.set_margin_start(16)
+            ver.set_margin_end(16)
+            ver.set_margin_top(8)
+            ver.set_margin_bottom(4)
+            outer.pack_start(ver, False, False, 0)
 
             self.add_button(_("Cancel"), Gtk.ResponseType.CANCEL)
             self.add_button(_("Save"), Gtk.ResponseType.OK).get_style_context(
