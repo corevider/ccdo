@@ -4792,6 +4792,9 @@ def main(argv):
         latest = cache.get("latest", "")
         if newer_version(latest):
             print(_("new version available: %s") % latest)
+            notes = plain_markdown(cache.get("notes"))
+            if notes:
+                print("\n%s\n" % notes)
             print(_("to update: ccdo update"))
         elif "--check" in rest:
             print(_("up to date") if latest else _("could not read version info"))
@@ -4807,6 +4810,9 @@ def main(argv):
         latest = cache.get("latest", "")
         if newer_version(latest):
             print("%s -> %s" % (VERSION, latest))
+            notes = plain_markdown(cache.get("notes"))
+            if notes:
+                print("\n%s" % notes)
         elif latest:
             print(_("already up to date (%s)") % VERSION)
 
