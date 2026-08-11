@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.3] - 2026-08-12
+
+### Added
+
+- **cli:** print the release notes in the terminal too (36bae39)
 ## [1.0.2] - 2026-08-12
 
 ### Added
