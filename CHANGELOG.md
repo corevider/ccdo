@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.5] - 2026-08-12
+
+### Added
+
+- **platform:** work on more distros and on macOS (b1afb61)
 ## [1.0.4] - 2026-08-12
 
 ### Fixed
