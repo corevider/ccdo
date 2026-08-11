@@ -397,8 +397,78 @@ ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" vie
 """
 
 
+def draw_icon_png(path, size=22, color=(0.85, 0.85, 0.85)):
+    """Draw the icon with Cairo and save it as PNG.
+
+    The icon ships as SVG, but GdkPixbuf only reads SVG where librsvg is
+    installed — and on macOS it usually is not, which left the status item
+    holding an image it could not load: an invisible, clickable gap in the
+    menu bar. Cairo is always there, so we draw the same shape instead of
+    rasterising anything.
+    """
+    import cairo
+
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+    cr = cairo.Context(surface)
+    k = size / 22.0
+    cr.scale(k, k)
+    cr.set_source_rgb(*color)
+    cr.set_line_width(1.6)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cr.set_line_join(cairo.LINE_JOIN_ROUND)
+
+    # The page, with its corner folded over.
+    cr.move_to(4.5, 3.2)
+    cr.line_to(14.7, 3.2)
+    cr.line_to(17.8, 6.3)
+    cr.line_to(17.8, 18.8)
+    cr.line_to(4.5, 18.8)
+    cr.close_path()
+    cr.stroke()
+    cr.move_to(14.7, 3.2)
+    cr.line_to(14.7, 6.3)
+    cr.line_to(17.8, 6.3)
+    cr.stroke()
+
+    # Three lines of writing, the last one short.
+    for y, x2 in ((10.0, 14.6), (13.2, 14.6), (16.4, 11.7)):
+        cr.move_to(7.4, y)
+        cr.line_to(x2, y)
+    cr.stroke()
+
+    surface.write_to_png(path)
+    return path
+
+
+def svg_supported():
+    """Can GdkPixbuf read SVG here? (librsvg is optional and often absent.)"""
+    try:
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+        return any(f.get_name() == "svg" for f in GdkPixbuf.Pixbuf.get_formats())
+    except Exception:
+        return False
+
+
+def write_icons():
+    """Put the icon on disk and return the file the tray should use."""
+    ensure_dirs()
+    svg_path = os.path.join(ICON_DIR, "ccdo.svg")
+    png_path = os.path.join(ICON_DIR, "ccdo.png")
+    if not os.path.exists(svg_path):
+        atomic_write(svg_path, ICON_SVG)
+    try:
+        if not os.path.exists(png_path):
+            draw_icon_png(png_path)
+    except Exception as e:
+        sys.stderr.write("ccdo: could not draw the icon (%s)\n" % e)
+        return svg_path
+    return svg_path if svg_supported() else png_path
+
+
 # --------------------------------------------------------------------------- #
-#  Yardimcilar
+#  Helpers
 # --------------------------------------------------------------------------- #
 
 def ensure_dirs():
@@ -2626,9 +2696,7 @@ def start_gui(use_statusicon=False):
     load_language(cfg.get("language"))
     store = Store(cfg)
     ensure_dirs()
-    icon_path = os.path.join(ICON_DIR, "ccdo.svg")
-    if not os.path.exists(icon_path):
-        atomic_write(icon_path, ICON_SVG)
+    icon_path = write_icons()
 
     # The design language comes out of one token set. Repeating colors rule by
     # rule meant a tone fixed in one window stayed stale in another; now every
