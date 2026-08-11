@@ -2845,19 +2845,37 @@ def start_gui(use_statusicon=False):
 
     # ------------------------------------------------------------------ #
 
+    def add_headerbar(dialog, title):
+        """Give a dialog the desktop's own title bar and close button.
+
+        Without one, mutter draws a plain frame whose buttons look nothing
+        like the ones on the main window.
+        """
+        head = Gtk.HeaderBar()
+        head.set_show_close_button(True)
+        head.set_title(title)
+        head.set_has_subtitle(False)
+        dialog.set_titlebar(head)
+
     def mark_body(dialog):
-        """Mark a dialog's body with .jd-body.
+        """Mark a dialog's content and button strip with .jd-body.
 
         Element-level rules (button, entry, switch…) live under .jd-body
-        rather than .jd-window: on the note window, which has a HeaderBar,
+        rather than .jd-window, because every window here has a HeaderBar and
         .jd-window would drag the title bar's close/minimise/maximise buttons
         into our flat button style when they have to look like the desktop's
-        own. Dialogs carry no HeaderBar, so landing on the dialog itself is
-        harmless — what matters is that the content and the button strip are
-        both covered.
+        own. Marking the two strips rather than the dialog keeps the title bar
+        outside our reach: a dialog's content area is a direct child of the
+        dialog on this GTK version, so a class put there would cover it.
         """
-        area = dialog.get_content_area()
-        (area.get_parent() or area).get_style_context().add_class("jd-body")
+        parts = [dialog.get_content_area()]
+        try:
+            parts.append(dialog.get_action_area())
+        except Exception:
+            pass
+        for part in parts:
+            if part is not None:
+                part.get_style_context().add_class("jd-body")
 
     def insert_image_paths(tv, paths):
         buf = tv.get_buffer()
@@ -3452,6 +3470,7 @@ def start_gui(use_statusicon=False):
         def __init__(self, parent, app, task):
             super().__init__(title=_("Edit task"), transient_for=parent,
                              modal=True, destroy_with_parent=True)
+            add_headerbar(self, _("Edit task"))
             self.app = app
             self.task = task
             self.set_default_size(460, 320)
@@ -3539,6 +3558,7 @@ def start_gui(use_statusicon=False):
         def __init__(self, parent, cfg):
             super().__init__(title=_("ccdo — settings"), transient_for=parent,
                              modal=True, destroy_with_parent=True)
+            add_headerbar(self, _("ccdo — settings"))
             self.set_default_size(500, 560)
             self.get_style_context().add_class("jd-window")
             mark_body(self)
@@ -3677,6 +3697,7 @@ def start_gui(use_statusicon=False):
 
         def __init__(self, app, target=None):
             super().__init__(title=_("ccdo — quick note"), modal=True)
+            add_headerbar(self, _("ccdo — quick note"))
             self.app = app
             self.set_default_size(420, 190)
             self.set_keep_above(True)
