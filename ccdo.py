@@ -123,10 +123,10 @@ THEME_DARK = {
     "text": "#e9eaee",
     "dim": "#9aa1ac",
     "faint": "#697079",
-    "accent": "#e0a458",        # oturum rengi olmayan yuzeylerin aksani
-    "accent_hi": "#eab471",
+    "accent": "#d97757",        # Claude's terracotta, for surfaces with no
+    "accent_hi": "#e28b6e",     # session color of their own
     "accent_ink": "#141518",
-    "accent_wash": "rgba(224, 164, 88, 0.12)",
+    "accent_wash": "rgba(217, 119, 87, 0.14)",
     "warn": "#d8b46a",
     "warn_bg": "rgba(216, 180, 106, 0.08)",
     "warn_edge": "rgba(216, 180, 106, 0.22)",
@@ -146,10 +146,10 @@ THEME_LIGHT = {
     "text": "#1b1d21",
     "dim": "#5b616b",
     "faint": "#868c96",
-    "accent": "#a96712",
-    "accent_hi": "#8d5510",
+    "accent": "#b2543a",
+    "accent_hi": "#96432c",
     "accent_ink": "#ffffff",
-    "accent_wash": "rgba(169, 103, 18, 0.10)",
+    "accent_wash": "rgba(178, 84, 58, 0.12)",
     "warn": "#8a6410",
     "warn_bg": "rgba(138, 100, 16, 0.08)",
     "warn_edge": "rgba(138, 100, 16, 0.28)",
