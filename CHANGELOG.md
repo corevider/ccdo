@@ -9,6 +9,15 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.2] - 2026-08-12
+
+### Added
+
+- **ui:** show the release notes in the window and update from there (c287024)
+
+### Fixed
+
+- **install:** only reach for apt when a dependency is missing (acb22d8)
 ## [1.0.1] - 2026-08-12
 
 ### Added
