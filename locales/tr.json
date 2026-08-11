@@ -133,6 +133,7 @@
   "Open the settings file": "Ayar dosyasını aç",
   "ccdo %s  ·  new version available: %s": "ccdo %s  ·  yeni sürüm var: %s",
   "ccdo — quick note": "ccdo — hızlı not",
+  "ccdo — settings": "ccdo — ayarlar",
   "Enter add · Ctrl+Enter add+send · Shift+Enter newline · Ctrl+V image · Esc cancel": "Enter ekle · Ctrl+Enter ekle+gönder · Shift+Enter satır · Ctrl+V görsel · Esc vazgeç",
 
   "ccdo %s is out (you have %s)": "ccdo %s yayımlandı (sende %s)",

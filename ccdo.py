@@ -3537,7 +3537,7 @@ def start_gui(use_statusicon=False):
         """
 
         def __init__(self, parent, cfg):
-            super().__init__(title="ccdo — ayarlar", transient_for=parent,
+            super().__init__(title=_("ccdo — settings"), transient_for=parent,
                              modal=True, destroy_with_parent=True)
             self.set_default_size(500, 560)
             self.get_style_context().add_class("jd-window")
