@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.4] - 2026-08-12
+
+### Fixed
+
+- **ui:** keep the version line in sight in the settings window (a736107)
 ## [1.0.3] - 2026-08-12
 
 ### Added

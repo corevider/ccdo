@@ -42,7 +42,7 @@ import zlib
 from datetime import datetime
 
 APP_NAME = "ccdo"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 REPO = "corevider/ccdo"
 DEBUG = bool(os.environ.get("CCDO_DEBUG"))
 
