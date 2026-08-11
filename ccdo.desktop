@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ccdo
+Comment=Tray note and task queue that feeds the Claude Code CLI
+Exec=@BIN@/ccdo
+Icon=accessories-text-editor
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

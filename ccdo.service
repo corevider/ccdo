@@ -1,0 +1,13 @@
+[Unit]
+Description=ccdo tray note queue
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/ccdo
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

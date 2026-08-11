@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Starts Claude Code inside tmux.
+#
+# Why: ccdo cannot type into the terminal of a session that is not in tmux. On
+# Wayland every route for injecting keys from outside is closed (xdotool needs
+# X11, wtype is unsupported on GNOME, ydotool types into whatever has focus,
+# TIOCSTI is disabled in the kernel). So a task can only reach an idle session
+# after the user types something and a turn ends.
+#
+# Inside tmux, $TMUX_PANE gives a permanent target: delivery goes through
+# send-keys and the send button works at once, even while the session sits
+# idle.
+set -euo pipefail
+
+CLAUDE="${CCDO_CLAUDE_BIN:-claude}"
+
+if ! command -v "$CLAUDE" >/dev/null 2>&1; then
+    echo "claude-tmux: '$CLAUDE' not found" >&2
+    exit 127
+fi
+
+# Do not block the work if tmux is missing: carry on with plain claude.
+if ! command -v tmux >/dev/null 2>&1; then
+    echo "claude-tmux: tmux is not installed, starting claude directly" >&2
+    exec "$CLAUDE" "$@"
+fi
+
+# Already inside tmux: no need to nest, TMUX_PANE is set.
+if [ -n "${TMUX:-}" ]; then
+    exec "$CLAUDE" "$@"
+fi
+
+# Opening tmux for non-interactive uses only gets in the way: `claude -p ...`
+# piping its output, or `claude --version`, is not a session. Pass those
+# through untouched.
+for arg in "$@"; do
+    case "$arg" in
+        -p|--print|-v|--version|-h|--help|mcp|config|update|doctor|install)
+            exec "$CLAUDE" "$@" ;;
+    esac
+done
+
+base="$(basename "$PWD")"
+base="${base//[^a-zA-Z0-9_-]/-}"
+[ -z "$base" ] && base="claude"
+
+# If a second session opens in the same directory, build a new one rather
+# than attaching to the running one: two Claudes cannot share a pane.
+name="cc-$base"
+i=2
+while tmux has-session -t "=$name" 2>/dev/null; do
+    name="cc-$base-$i"
+    i=$((i + 1))
+done
+
+# tmux takes the command as a single string; we quote it ourselves so
+# arguments with spaces do not get split.
+cmd="$(printf '%q ' "$CLAUDE" "$@")"
+exec tmux new-session -s "$name" "$cmd"
