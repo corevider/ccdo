@@ -80,7 +80,7 @@ EVENTS_KEEP = 2000               # gunluk bu satir sayisina kirpilir
 CLAUDE_SETTINGS = os.path.join(HOME, ".claude", "settings.json")
 
 INBOX = "__inbox__"          # hedefi olmayan notlarin sanal bolumu
-HISTORY_UI_LIMIT = 50        # gecmis bolumunde gosterilen en yeni kayit sayisi
+HISTORY_UI_LIMIT = 50        # newest records shown in the history section
 
 DEFAULT_CONFIG = {
     "delivery": "auto",              # auto | tmux | xdotool | file
@@ -91,21 +91,21 @@ DEFAULT_CONFIG = {
     "file_ref_template": "Read {path} and do the task in it.",
     "xdotool_window": "claude",
     "notify": True,
-    "discover_interval": 4,          # tmux tarama araligi (sn)
-    "process_match": ["claude"],     # pane'in process agacinda aranan komut
-    "pane_match": ["claude"],         # ps yoksa geri dusulen metin eslesmesi
-    "auto_advance": False,           # Stop hook'u kuyrugu kendiliginden bosaltsin mi
-    "max_auto_advance": 3,           # kullanici mesaji basina ust uste kac gorev
-    "session_stale_after": 43200,    # bu kadar sn sessiz kalan kayit olu sayilir
-    "skip_advance_on_question": True,  # Claude soru sorduysa gorev gonderme
-    "question_patterns": [],         # ek soru kaliplari (regex)
-    "check_updates": True,           # gunde bir kez yeni surum var mi diye bak
-    "language": "auto",              # auto = masaustunun dili; en, tr, ...
-    "use_claude_session_name": True, # sekme adini Claude Code oturum adindan al
-    "use_claude_theme_color": True,  # oturum rengini Claude Code temasindan al
-    "use_claude_agent_color": True,  # oturum rengini /color ile verilenden al
-    "window_keep_above": True,       # pencere hep ustte dursun mu
-    "window_utility_hint": False,    # UTILITY ipucu (bazi WM'lerde sorunlu)
+    "discover_interval": 4,          # tmux scan interval (s)
+    "process_match": ["claude"],     # command looked for in a pane process tree
+    "pane_match": ["claude"],         # text match used when ps is unavailable
+    "auto_advance": False,           # may the Stop hook empty the queue by itself
+    "max_auto_advance": 3,           # tasks in a row per user message
+    "session_stale_after": 43200,    # a record silent this long counts as dead
+    "skip_advance_on_question": True,  # hold back if Claude ended with a question
+    "question_patterns": [],         # extra question patterns (regex)
+    "check_updates": True,           # look for a newer release once a day
+    "language": "auto",              # auto = the desktop language; en, tr, ...
+    "use_claude_session_name": True, # take the tab name from Claude Code
+    "use_claude_theme_color": True,  # take the color from the Claude Code theme
+    "use_claude_agent_color": True,  # take the color from /color
+    "window_keep_above": True,       # keep the window on top
+    "window_utility_hint": False,    # UTILITY hint (troublesome on some WMs)
     "sessions": {
         # The key is either a full target ("proj:0.0") or a session name.
         # "proj": { "label": "My Project", "color": "#7fc98f",
@@ -263,7 +263,7 @@ UPDATE_INTERVAL = 86400          # ayni gun icinde tekrar sorma
 
 
 def parse_version(text):
-    """'v1.2.3' -> (1, 2, 3). Karsilastirilamayan parca 0 sayilir."""
+    """'v1.2.3' -> (1, 2, 3). A part that will not compare counts as 0."""
     nums = re.findall(r"\d+", (text or "").strip())
     return tuple(int(n) for n in nums[:3]) + (0,) * (3 - len(nums[:3]))
 
@@ -611,7 +611,7 @@ def load_config():
             if isinstance(user, dict):
                 cfg.update(user)
         except Exception as e:
-            sys.stderr.write("config okunamadi (%s), varsayilan kullaniliyor\n" % e)
+            sys.stderr.write("could not read the config (%s), using defaults\n" % e)
     else:
         atomic_write(CONFIG_PATH, json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     return cfg
@@ -742,7 +742,7 @@ class Registry:
         return False
 
     def prune(self, max_age):
-        """Cokmus Claude Code surecinden kalan kayitlari temizle."""
+        """Drop records left behind by a Claude Code process that crashed."""
         cutoff = time.time() - max_age
         with FileLock(SESSIONS_LOCK):
             data = self._read()
@@ -954,8 +954,8 @@ def parse_agent_color(value):
     return parse_theme_color(v)
 
 
-_AGENT_COLOR_CACHE = {}      # yol -> (dosya damgasi, renk)
-_AGENT_COLOR_SEEN = {}       # yol -> son bilinen renk
+_AGENT_COLOR_CACHE = {}      # path -> (file stamp, color)
+_AGENT_COLOR_SEEN = {}       # path -> the last colour we saw
 _AGENT_COLOR_SCANNED = set() # bastan sona bir kez taranmis dosyalar
 
 
@@ -1163,7 +1163,7 @@ def transcript_title(path, max_bytes=262144):
         title = title[:59] + "…"
     _TITLE_CACHE[path] = (key, title)
     if DEBUG and title:
-        sys.stderr.write("[ccdo] transcript basligi: %r (oncelik %s)\n"
+        sys.stderr.write("[ccdo] transcript title: %r (priority %s)\n"
                          % (title, best[0]))
     return title
 
@@ -1236,7 +1236,7 @@ def registry_sessions(cfg):
 # --------------------------------------------------------------------------- #
 
 def tmux_panes():
-    """(hedef, komut, cwd, baslik, pane_pid, pane_id) listesi."""
+    """A list of (target, command, cwd, title, pane_pid, pane_id)."""
     if not shutil.which("tmux"):
         return []
     fmt = ("#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}"
@@ -1410,7 +1410,7 @@ def ghost_session(cfg, target):
 
 
 def session_folder(sess):
-    """Oturumun calisma dizininin son parcasi (klasor adi)."""
+    """The last part of the session working directory: the folder name."""
     return os.path.basename((sess.get("cwd") or "").rstrip("/"))
 
 
@@ -1454,7 +1454,7 @@ def state_icon(sess):
 
 
 def state_mark(sess):
-    """Sekmede adin solunda gorunecek durum isareti."""
+    """The state mark shown left of the name on a tab."""
     if not sess.get("live", True):
         return STATE_MARKS["ended"][0]
     return STATE_MARKS.get(sess.get("state") or "", ("", "", ""))[0]
@@ -1563,7 +1563,7 @@ EVENT_TEXT = {
 
 
 def describe_event(rec):
-    """Gunluk satirini insan diline cevir."""
+    """Render a log record in plain words."""
     kind = rec.get("kind", "")
     tpl = EVENT_TEXT.get(kind)
     if not tpl:
@@ -1919,7 +1919,7 @@ class Store:
         for t in data["tasks"]:
             if t.get("status") == "done":
                 continue
-            groups.setdefault(t.get("target") or "(atanmamis)", []).append(t)
+            groups.setdefault(t.get("target") or _("(unassigned)"), []).append(t)
 
         def render(subset):
             lines = ["# " + _("Task queue"), "", "_%s · ccdo_" % now_iso(), ""]
@@ -1956,7 +1956,7 @@ class Store:
 
 
 # --------------------------------------------------------------------------- #
-#  Teslim
+#  Delivery
 # --------------------------------------------------------------------------- #
 
 def prepare_payload(cfg, task):
@@ -2169,8 +2169,8 @@ def hook_session_start(cfg, store, reg, data):
     return {"hookSpecificOutput": {
         "hookEventName": "SessionStart",
         "additionalContext": (
-            "Bu oturum icin ccdo kuyrugunda %d bekleyen gorev var: %s. "
-            "Kullanici isterse `ccdo next` ile siradakini cekebilirsin."
+            _("The ccdo queue has %d task(s) waiting for this session: %s. "
+              "If the user wants one, `ccdo next` hands over the next.")
             % (len(pending), lines))}}
 
 
@@ -2256,7 +2256,7 @@ def last_assistant_text(path, max_bytes=262144):
 
 
 def _entry_role(obj):
-    """Transcript satirindaki mesajin rolu; mesaj degilse None."""
+    """The role of the message on a transcript line, or None if it is not one."""
     if not isinstance(obj, dict):
         return None
     msg = obj.get("message") if isinstance(obj.get("message"), dict) else obj
@@ -2370,7 +2370,7 @@ def turn_ends_with_question(text, cfg=None):
 
 
 def hook_stop(cfg, store, reg, data):
-    """Tur bitti. Oturumu bosa al; otomatik ilerleme aciksa siradakini ver."""
+    """The turn ended. Mark the session idle; with auto on, hand over the next."""
     sid = data.get("session_id")
     rec = reg.get(sid) or {}
     target = rec.get("target") or resolve_pane_target(sid)
@@ -2394,7 +2394,7 @@ def hook_stop(cfg, store, reg, data):
     if asked:
         if waiting:
             log_event("skip_question", target=target, task=waiting, detail=why)
-            notify("ccdo: bekliyorum",
+            notify("ccdo: " + _("waiting"),
                    _("Claude asked a question — auto-advance skipped."), cfg)
         return {}
 
@@ -2466,7 +2466,7 @@ def run_hook(cfg, store, event):
     try:
         out = handler(cfg, store, Registry(), data) or {}
     except Exception as e:
-        sys.stderr.write("ccdo hook hatasi: %s\n" % e)
+        sys.stderr.write("ccdo hook error: %s\n" % e)
         return 0
     if out:
         sys.stdout.write(json.dumps(out, ensure_ascii=False))
@@ -2474,7 +2474,7 @@ def run_hook(cfg, store, event):
 
 
 def hook_config(exe):
-    """~/.claude/settings.json icine yazilacak hooks blogu."""
+    """The hooks block written into ~/.claude/settings.json."""
     def entry(event, matcher=None):
         h = {"type": "command", "command": exe, "args": ["hook", event]}
         group = {"hooks": [h]}
@@ -2493,7 +2493,7 @@ def hook_config(exe):
 
 
 def install_hooks(dry_run=False):
-    """ccdo hook'larini ~/.claude/settings.json'a ekle (mevcutlari koruyarak)."""
+    """Add the ccdo hooks to ~/.claude/settings.json, keeping any already there."""
     exe = shutil.which("ccdo") or os.path.abspath(sys.argv[0])
     wanted = hook_config(exe)
 
@@ -2503,7 +2503,7 @@ def install_hooks(dry_run=False):
             with open(CLAUDE_SETTINGS, encoding="utf-8") as f:
                 settings = json.load(f)
         except Exception as e:
-            sys.stderr.write("settings.json okunamadi: %s\n" % e)
+            sys.stderr.write("could not read settings.json: %s\n" % e)
             return 1
     hooks = settings.setdefault("hooks", {})
 
@@ -2531,9 +2531,9 @@ def install_hooks(dry_run=False):
         shutil.copy2(CLAUDE_SETTINGS, backup)
         print("yedek: %s" % backup)
     atomic_write(CLAUDE_SETTINGS, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
-    print("%d hook yazildi -> %s" % (added, CLAUDE_SETTINGS))
-    print("Calisan Claude Code oturumlarini yeniden baslat.")
-    print("Dogrulama: Claude Code icinde /hooks")
+    print("wrote %d hook(s) -> %s" % (added, CLAUDE_SETTINGS))
+    print("Restart any running Claude Code sessions.")
+    print("To check: type /hooks inside a session")
     return 0
 
 
@@ -2619,7 +2619,7 @@ def start_gui(use_statusicon=False):
             except (ValueError, ImportError, AttributeError):
                 continue
         if Indicator is None:
-            sys.stderr.write("AppIndicator yok, StatusIcon'a dusuluyor.\n")
+            sys.stderr.write("No AppIndicator, falling back to StatusIcon.\n")
             use_statusicon = True
 
     cfg = load_config()
@@ -3447,7 +3447,7 @@ def start_gui(use_statusicon=False):
             box.pack_start(col, True, True, 0)
 
             row.add(box)
-            # Cok satirli notun tamami satira sigmaz; ipucunda duruyor.
+            # A multi-line note will not fit on the row; the tooltip has it.
             if text:
                 row.set_tooltip_text(text)
             return row
@@ -3560,7 +3560,7 @@ def start_gui(use_statusicon=False):
             box.pack_start(sw, True, True, 0)
 
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            lbl = Gtk.Label(label="Oturum:", xalign=0)
+            lbl = Gtk.Label(label=_("Session:"), xalign=0)
             lbl.get_style_context().add_class("jd-sub")
             row.pack_start(lbl, False, False, 0)
 
@@ -3792,7 +3792,7 @@ def start_gui(use_statusicon=False):
             box.pack_start(sw, True, True, 0)
 
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            lbl = Gtk.Label(label="Oturum:", xalign=0)
+            lbl = Gtk.Label(label=_("Session:"), xalign=0)
             lbl.get_style_context().add_class("jd-sub")
             row.pack_start(lbl, False, False, 0)
             self.combo = Gtk.ComboBoxText()
@@ -3960,7 +3960,7 @@ def start_gui(use_statusicon=False):
                     self._discover_pending = True
                     GLib.timeout_add(500, self._retry_discover)
                 if DEBUG:
-                    sys.stderr.write("[ccdo] tarama ertelendi (hiz siniri)\n")
+                    sys.stderr.write("[ccdo] scan deferred (rate limit)\n")
                 return None
             self._last_discover = now
             live = discover_sessions(cfg)
@@ -3980,13 +3980,13 @@ def start_gui(use_statusicon=False):
             sig = tuple((s["target"], s["label"], s["live"]) for s in sessions)
             if sig != self.last_sig:
                 if DEBUG:
-                    sys.stderr.write("[ccdo] sekmeler yeniden kuruluyor: %r\n" % (sig,))
+                    sys.stderr.write("[ccdo] rebuilding tabs: %r\n" % (sig,))
                 self.last_sig = sig
                 self.rebuild_pages()
             elif DEBUG:
-                sys.stderr.write("[ccdo] tarama: degisiklik yok (%d oturum)\n" % len(sessions))
+                sys.stderr.write("[ccdo] scan: no change (%d sessions)\n" % len(sessions))
             self.request_refresh()
-            # DIKKAT: burada True DONME. GLib bunu "beni tekrar cagir" diye
+            # DIKKAT: burada True DONME. GLib bunu "call me again" diye
             # yorumlar; idle kaynagi olarak baglandiginda sonsuz donguye girer.
             return None
 
@@ -3999,7 +3999,7 @@ def start_gui(use_statusicon=False):
             try:
                 self.discover()
             except Exception as e:
-                sys.stderr.write("[ccdo] tarama hatasi: %s\n" % e)
+                sys.stderr.write("[ccdo] scan error: %s\n" % e)
             return True
 
         def poll_store(self):
@@ -4007,12 +4007,12 @@ def start_gui(use_statusicon=False):
                 m = store.fingerprint()
                 if m != self.last_mtime:
                     if DEBUG:
-                        sys.stderr.write("[ccdo] %.3f kuyruk degisti %r -> %r\n"
+                        sys.stderr.write("[ccdo] %.3f queue changed %r -> %r\n"
                                          % (time.time(), self.last_mtime, m))
                     self.last_mtime = m
                     self.request_refresh()
             except Exception as e:
-                sys.stderr.write("[ccdo] poll hatasi: %s\n" % e)
+                sys.stderr.write("[ccdo] poll error: %s\n" % e)
             return True
 
         def rebuild_pages(self):
@@ -4171,7 +4171,7 @@ def start_gui(use_statusicon=False):
                 try:
                     fn(*a)
                 except Exception as e:
-                    sys.stderr.write("[ccdo] idle hatasi: %s\n" % e)
+                    sys.stderr.write("[ccdo] idle error: %s\n" % e)
                 return False          # kaynagi kaldir, tekrarlama
             return wrapper
 
@@ -4408,7 +4408,7 @@ def start_gui(use_statusicon=False):
                 mi.connect("activate", lambda _w, tg=s["target"]:
                            (store.update(task_id, target=tg), self.request_refresh()))
                 m.append(mi)
-            mi = Gtk.MenuItem.new_with_label("ideabox'a al")
+            mi = Gtk.MenuItem.new_with_label(_("Move to the inbox"))
             mi.connect("activate", lambda _w: (store.update(task_id, target=None),
                                                self.request_refresh()))
             m.append(mi)
@@ -4434,7 +4434,7 @@ def start_gui(use_statusicon=False):
             try:
                 self.refresh_all()
             except Exception as e:
-                sys.stderr.write("[ccdo] refresh hatasi: %s\n" % e)
+                sys.stderr.write("[ccdo] refresh error: %s\n" % e)
             return False
 
         def refresh_all(self):
@@ -4446,14 +4446,14 @@ def start_gui(use_statusicon=False):
             n = len(store.pending())
             label = str(n) if n else ""
             if self.ind is not None:
-                if label != self._last_label:      # ayni degeri tekrar yazma
+                if label != self._last_label:      # do not rewrite the same value
                     self._last_label = label
                     self.ind.set_label(label, "99")
             elif self.tray is not None:
-                self.tray.set_tooltip_text("ccdo — %d bekleyen" % n)
+                self.tray.set_tooltip_text(_("ccdo — %d waiting") % n)
 
         def menu_signature(self):
-            """Menude gorunen her seyin ozeti."""
+            """A digest of everything the menu shows."""
             parts = [read_update_cache().get("latest", "")]
             for sess in self.sessions:
                 tasks = store.pending(sess["target"])
@@ -4473,10 +4473,10 @@ def start_gui(use_statusicon=False):
             sig = self.menu_signature()
             if sig == self._menu_sig:
                 if DEBUG:
-                    sys.stderr.write("[ccdo] menu degismedi, dokunulmadi\n")
+                    sys.stderr.write("[ccdo] menu unchanged, left alone\n")
                 return
             if DEBUG:
-                sys.stderr.write("[ccdo] menu yeniden kuruluyor\n")
+                sys.stderr.write("[ccdo] rebuilding the menu\n")
             self._menu_sig = sig
             self._menu_dirty = False
             self._build_menu()
@@ -4624,7 +4624,7 @@ def main(argv):
 
     if cmd in ("show", "capture", "toggle"):
         if ipc_send(cmd) is None:
-            sys.stderr.write("ccdo daemon calismiyor\n")
+            sys.stderr.write("the ccdo daemon is not running\n")
             return 1
         return 0
 
@@ -4655,14 +4655,14 @@ def main(argv):
         if cmd == "next":
             store.update(t["id"], status="sent", sent_at=now_iso(), push=False)
             ipc_send("refresh")
-            sys.stderr.write("[ccdo] %s teslim edildi\n" % t["id"])
+            sys.stderr.write("[ccdo] %s delivered\n" % t["id"])
         return 0
 
     # done/delete must not fail silently: they used to return 1 without
     # printing anything, so the only way to tell was to open the queue file.
     if cmd in ("done", "delete"):
         if not rest:
-            sys.stderr.write("kullanim: ccdo %s <id>\n" % cmd)
+            sys.stderr.write("usage: ccdo %s <id>\n" % cmd)
             return 2
         tid = rest[0]
         ok = (store.update(tid, status="done") if cmd == "done"
@@ -4671,10 +4671,10 @@ def main(argv):
         if not ok:
             known = next((t for t in store.all() if t["id"] == tid), None)
             if known:
-                sys.stderr.write("gorev islenemedi: %s (durum: %s)\n"
+                sys.stderr.write("could not process the task: %s (status: %s)\n"
                                  % (tid, known.get("status")))
             else:
-                sys.stderr.write("gorev bulunamadi: %s\n" % tid)
+                sys.stderr.write("no such task: %s\n" % tid)
             return 1
         print("%s: %s" % (_("done") if cmd == "done" else _("deleted"), tid))
         return 0
@@ -4683,11 +4683,11 @@ def main(argv):
         try:
             n = int(rest[0]) if rest else 20
         except ValueError:
-            sys.stderr.write("kullanim: ccdo history [n]\n")
+            sys.stderr.write("usage: ccdo history [n]\n")
             return 2
         recs = read_history(limit=n)
         if not recs:
-            print("gecmis bos")
+            print(_("the history is empty"))
             return 0
         for rec in reversed(recs):          # en yeni ustte
             t = rec["task"]
@@ -4729,7 +4729,7 @@ def main(argv):
         t = (next((x for x in store.all() if x["id"] == rest[0]), None) if rest
              else store.next_pending())
         if not t:
-            sys.stderr.write("gorev yok\n")
+            sys.stderr.write("no task\n")
             return 1
         ok, msg = deliver(cfg, store, t, force=force)
         ipc_send("refresh")
@@ -4738,7 +4738,7 @@ def main(argv):
 
     if cmd == "hook":
         if not rest or rest[0] not in HOOK_HANDLERS:
-            sys.stderr.write("kullanim: ccdo hook <%s>\n" % "|".join(HOOK_EVENTS))
+            sys.stderr.write("usage: ccdo hook <%s>\n" % "|".join(HOOK_EVENTS))
             return 2
         return run_hook(cfg, store, rest[0])
 
@@ -4748,61 +4748,61 @@ def main(argv):
     if cmd == "sessions":
         ss = discover_sessions(cfg)
         if not ss:
-            print("canli oturum yok")
-            print("Hook'lar kurulu mu? -> ccdo install-hooks")
+            print(_("no live sessions"))
+            print("Are the hooks installed? -> ccdo install-hooks")
             return 1
         print("%-9s %-10s %-15s %-14s %-9s %-7s %s" %
-              ("RENK", "RENKKAYN", "ETIKET", "HEDEF", "DURUM", "KAYNAK", "DIZIN"))
+              ("COLOR", "FROM", "LABEL", "TARGET", "STATE", "SOURCE", "DIR"))
         for s in ss:
             print("%-9s %-10s %-15s %-14s %-9s %-7s %s" %
                   (s["color"], (s.get("color_source") or "?")[:10], s["label"][:15],
                    s["target"][:14], s.get("state", "?"), s.get("source", "?"), s["cwd"]))
-        print("\nKAYNAK=hook ise eslesme kesin; scan ise tmux taramasindan tahmin.")
+        print("\nSOURCE=hook means the match is exact; scan means it is a guess.")
         return 0
 
     if cmd == "auto":
         # ccdo auto <hedef> on|off
         if len(rest) < 2 or rest[1] not in ("on", "off"):
-            sys.stderr.write("kullanim: ccdo auto <hedef> on|off\n")
+            sys.stderr.write("usage: ccdo auto <target> on|off\n")
             return 2
         reg = Registry()
         rec = reg.by_target(rest[0])
         if not rec:
-            sys.stderr.write("kayitli oturum yok: %s\n" % rest[0])
+            sys.stderr.write("no registered session: %s\n" % rest[0])
             return 1
         reg.upsert(rec["session_id"], auto_advance=(rest[1] == "on"), advance_count=0)
         AutoPrefs().set(rec.get("cwd"), rest[1] == "on")
         ipc_send("refresh")
-        print("%s otomatik ilerleme: %s" % (rest[0], rest[1]))
+        print("%s auto-advance: %s" % (rest[0], rest[1]))
         return 0
 
     if cmd == "diag":
-        print("== Claude Code ayar zinciri ==")
+        print("== the Claude Code settings chain ==")
         reg = Registry()
         recs = list(reg.all().values()) or [{"cwd": os.getcwd(), "session_id": "(yok)"}]
         for rec in recs:
             cwd = rec.get("cwd") or os.getcwd()
-            print("\n-- oturum %s" % (rec.get("session_id") or "?"))
+            print("\n-- session %s" % (rec.get("session_id") or "?"))
             print("   cwd        : %s" % cwd)
-            print("   transcript : %s" % (rec.get("transcript") or "(kayitli degil)"))
+            print("   transcript : %s" % (rec.get("transcript") or "(not recorded)"))
             d = os.path.realpath(cwd)
             while True:
                 for name in ("settings.local.json", "settings.json"):
                     p = os.path.join(d, ".claude", name)
                     if os.path.exists(p):
                         data = _read_json(p) or {}
-                        print("   ayar       : %s  theme=%r" % (p, data.get("theme")))
+                        print("   setting    : %s  theme=%r" % (p, data.get("theme")))
                 parent = os.path.dirname(d)
                 if parent == d:
                     break
                 d = parent
             up = os.path.join(HOME, ".claude", "settings.json")
             if os.path.exists(up):
-                print("   ayar       : %s  theme=%r"
+                print("   setting    : %s  theme=%r"
                       % (up, (_read_json(up) or {}).get("theme")))
-            print("   tema secimi: %r" % claude_theme_preference(cwd))
-            print("   tema rengi : %r" % claude_theme_color(cwd))
-            print("   oturum adi : %r" % (transcript_title(rec.get("transcript"))
+            print("   theme choice: %r" % claude_theme_preference(cwd))
+            print("   theme color : %r" % claude_theme_color(cwd))
+            print("   session name: %r" % (transcript_title(rec.get("transcript"))
                                           or rec.get("title")))
 
         tdir = os.path.join(HOME, ".claude", "themes")
@@ -4811,27 +4811,27 @@ def main(argv):
             names = sorted(os.listdir(tdir))
         except OSError as e:
             names = []
-            print("   (okunamadi: %s)" % e)
+            print("   (could not read: %s)" % e)
         for n in names:
             data = _read_json(os.path.join(tdir, n)) or {}
             ov = data.get("overrides") or {}
             print("   %-24s claude=%r promptBorder=%r"
                   % (n, ov.get("claude"), ov.get("promptBorder")))
         if not names:
-            print("   (ozel tema yok — yerlesik temada renk alinmaz)")
+            print("   (no custom theme — built-in themes yield no color)")
         return 0
 
     if cmd == "targets":
         panes = tmux_panes()
         if not panes:
-            print("tmux pane bulunamadi")
+            print("no tmux panes found")
             return 1
         live = {s["target"] for s in discover_sessions(cfg)}
         for target, c, cwd, title, pid, pane_id in panes:
             mark = " *" if (target in live or pane_id in live) else ""
             print("%-18s %-7s %-10s %-7s %-32s %s" % (
                 target + mark, pane_id, c, pid, cwd, title))
-        print("\n* = ccdo bunu Claude Code sayiyor.")
+        print("\n* = ccdo counts this as Claude Code.")
         return 0
 
     if cmd in ("version", "--version", "-V"):
@@ -4891,13 +4891,13 @@ def main(argv):
 
     if cmd == "path":
         for label, path in (("config", CONFIG_PATH), ("queue", STORE_PATH),
-                            ("md", QUEUE_MD), ("gecmis", HISTORY_PATH),
-                            ("gunluk", EVENTS_PATH), ("oto", AUTO_PATH),
-                            ("gorsel", IMAGES_DIR), ("surum", UPDATE_PATH)):
+                            ("md", QUEUE_MD), ("history", HISTORY_PATH),
+                            ("log", EVENTS_PATH), ("auto", AUTO_PATH),
+                            ("images", IMAGES_DIR), ("version", UPDATE_PATH)):
             print("%-7s: %s" % (label, path))
         return 0
 
-    sys.stderr.write("bilinmeyen komut: %s\n" % cmd)
+    sys.stderr.write("unknown command: %s\n" % cmd)
     print(__doc__)
     return 2
 

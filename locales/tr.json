@@ -92,6 +92,8 @@
   "Claude asked a question — auto-advance skipped.": "Claude bir soru sordu — otomatik ilerleme atlandı.",
   "Budget spent (%d/%d) — it resumes once you type.": "Bütçe doldu (%d/%d) — bir şey yazınca devam eder.",
   "next task handed over": "sıradaki görev verildi",
+  "ccdo — %d waiting": "ccdo — %d bekleyen",
+  "The ccdo queue has %d task(s) waiting for this session: %s. If the user wants one, `ccdo next` hands over the next.": "Bu oturum için ccdo kuyruğunda %d bekleyen görev var: %s. Kullanıcı isterse `ccdo next` ile sıradakini çekebilirsin.",
   "sent": "gönderildi",
   "could not send": "gönderilemedi",
 
@@ -171,6 +173,10 @@
   "Quit": "Çıkış",
   "empty": "boş",
   "no live sessions": "canlı oturum yok",
+  "Session:": "Oturum:",
+  "waiting": "bekliyorum",
+  "the history is empty": "geçmiş boş",
+  "Move to the inbox": "ideabox'a al",
   "done": "tamamlandı",
   "deleted": "silindi"
 }
