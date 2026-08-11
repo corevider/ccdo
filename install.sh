@@ -21,7 +21,22 @@ UNITS="$HOME/.config/systemd/user"
 LOCALES="${XDG_DATA_HOME:-$HOME/.local/share}/ccdo/locales"
 
 echo "==> Dependencies"
-if command -v apt >/dev/null 2>&1; then
+# Only reach for apt if something is actually missing. An update run has them
+# all already, and asking for sudo then would stall a GUI-triggered update
+# where there is no terminal to type a password into.
+missing=0
+python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" \
+  >/dev/null 2>&1 || missing=1
+python3 -c "import gi; gi.require_version('AyatanaAppIndicator3','0.1')" \
+  >/dev/null 2>&1 || python3 -c "import gi; gi.require_version('AppIndicator3','0.1')" \
+  >/dev/null 2>&1 || missing=1
+for cmd in tmux notify-send; do
+  command -v "$cmd" >/dev/null 2>&1 || missing=1
+done
+
+if [ "${CCDO_SKIP_DEPS:-}" = "1" ] || [ "$missing" = "0" ]; then
+  echo "   already satisfied, skipping apt"
+elif command -v apt >/dev/null 2>&1; then
   sudo apt update
   sudo apt install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
        gir1.2-ayatanaappindicator3-0.1 libnotify-bin tmux xdotool xclip
