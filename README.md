@@ -7,7 +7,12 @@ interrupting the session**, then hand it over when the current work finishes.
 The window opens **a tab per live Claude Code session**. A note goes to the
 session whose tab you wrote it under — no guessing.
 
-<img src="docs/note-window.png" alt="The ccdo window: a tab per session, the queue below" width="560">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/note-window-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/note-window-light.png">
+  <img src="docs/note-window-dark.png" width="560"
+       alt="The ccdo window: a tab per session, the queue below">
+</picture>
 
 ## Install
 
@@ -682,7 +687,11 @@ rather than the moment of the move, or they would all bunch up on today.
 `max_auto_advance`, are there with a line of explanation each. Saving writes to
 `config.json` and takes effect in the running tray at once — no restart.
 
-<img src="docs/settings-window.png" alt="The settings window" width="560">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/settings-window-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/settings-window-light.png">
+  <img src="docs/settings-window-dark.png" width="560" alt="The settings window">
+</picture>
 
 The window is generated from the `SETTINGS_SCHEMA` table; because the table is
 the single source, the window cannot fall behind when a setting is added
@@ -758,7 +767,8 @@ runtime would notice.
 available and exercise the send-keys route too; without it they skip that part.
 
 The screenshots above are produced by `tools/screenshots.py`, which draws the
-real windows offscreen with GTK against seeded data — so refreshing them after
+real windows offscreen with GTK against seeded data, in both palettes so the
+README can follow the reader's theme — so refreshing them after
 a design change is one command, and no one has to arrange a desktop and crop a
 photo. It runs in a temporary XDG directory and makes the session scan match
 nothing, so a real session can never end up in an image.

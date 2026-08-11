@@ -3,6 +3,8 @@
 
     tools/screenshots.py [outdir]
 
+Both palettes are rendered, so the README can follow the reader's theme.
+
 The app is drawn offscreen with GTK, so these are the real widget trees with
 the real stylesheet — only the window manager's frame is missing. Everything
 is seeded here, so re-running it after a design change refreshes the images
@@ -12,6 +14,7 @@ It works in a temporary XDG directory and never touches a real queue.
 """
 import importlib.util
 import os
+import subprocess
 import re
 import shutil
 import sys
@@ -84,7 +87,7 @@ def styled(widget_box, width, height, path):
     print("  %s" % os.path.relpath(path, ROOT))
 
 
-def note_window(out):
+def note_window(out, theme):
     """Drive the real App, then render its notebook."""
     real_main = Gtk.main
 
@@ -96,7 +99,8 @@ def note_window(out):
             return False
         child = win.get_child()
         win.remove(child)
-        styled(child, 560, 700, os.path.join(out, "note-window.png"))
+        styled(child, 560, 700,
+               os.path.join(out, "note-window-%s.png" % theme))
         Gtk.main_quit()
         return False
 
@@ -136,13 +140,27 @@ def dialog(name, end_marker, out, width, height, filename, extra=None):
 
 
 def main():
+    # One palette per process: start_gui installs the stylesheet once, and the
+    # dialogs are drawn against whatever it left in place. Re-running ourselves
+    # is simpler than teaching the app to switch mid-flight for a screenshot.
+    theme = os.environ.get("CCDO_SHOT_THEME")
+    if not theme:
+        for choice in ("dark", "light"):
+            subprocess.run([sys.executable, os.path.abspath(__file__), OUTDIR],
+                           env=dict(os.environ, CCDO_SHOT_THEME=choice),
+                           check=True)
+        return
+
+    if theme == "light":
+        jd.prefers_dark = lambda *a, **k: False
+
     os.makedirs(OUTDIR, exist_ok=True)
     cfg = seed()
     jd.load_language("en")
-    print("Rendering into %s" % os.path.relpath(OUTDIR, ROOT))
-    note_window(OUTDIR)
+    print("Rendering %s into %s" % (theme, os.path.relpath(OUTDIR, ROOT)))
+    note_window(OUTDIR, theme)
     dialog("SettingsDialog", "QuickNoteDialog", OUTDIR, 560, 780,
-           "settings-window.png", extra={"_args": (None, cfg)})
+           "settings-window-%s.png" % theme, extra={"_args": (None, cfg)})
     shutil.rmtree(TMP, ignore_errors=True)
 
 
