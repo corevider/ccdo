@@ -9,6 +9,18 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.1] - 2026-08-12
+
+### Added
+
+- **cli:** let ccdo update run the installer (cb3fb57)
+- **ui:** give dialogs the desktop's own title bar (1238fab)
+- **theme:** use Claude's terracotta as the neutral accent (e250289)
+- **ui:** move Settings above Quit in the tray menu (806891f)
+
+### Fixed
+
+- **i18n:** translate the settings window title (c37cb33)
 ## [1.0.0] - 2026-08-11
 
 First release.
