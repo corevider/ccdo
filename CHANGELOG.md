@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.8] - 2026-08-12
+
+### Fixed
+
+- **update:** install the release that was announced, not main (167be2b)
 ## [1.0.7] - 2026-08-12
 
 ### Added
