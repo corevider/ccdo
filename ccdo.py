@@ -21,7 +21,7 @@ Usage:
     ccdo targets                # raw tmux pane list
     ccdo path                   # where the files live
     ccdo version [--check]      # version; --check asks whether a newer one is out
-    ccdo update                 # print the update command
+    ccdo update [--apply]       # print the update command, or run it
 """
 
 import json
@@ -4697,15 +4697,40 @@ def main(argv):
         return 0
 
     if cmd == "update":
+        # --apply runs the installer for you. It is opt-in on purpose: piping a
+        # remote script into a shell is not something to do behind the user's
+        # back, so without the flag we only print the command.
+        apply = "--apply" in rest
+        assume_yes = "--yes" in rest or "-y" in rest
         cache = check_update(cfg, force=True)
         latest = cache.get("latest", "")
         if newer_version(latest):
             print("%s -> %s" % (VERSION, latest))
         elif latest:
             print(_("already up to date (%s)") % VERSION)
+
+        if not apply:
+            print("\n%s\n" % update_command())
+            print(_("The installer replaces ccdo in place; your settings, queue"))
+            print(_("and history stay put. Then: systemctl --user restart ccdo"))
+            print(_("To run it now: ccdo update --apply"))
+            return 0
+
         print("\n%s\n" % update_command())
-        print(_("The installer replaces ccdo in place; your settings, queue"))
-        print(_("and history stay put. Then: systemctl --user restart ccdo"))
+        if not assume_yes:
+            try:
+                answer = input(_("Run it now? [y/N] ")).strip().lower()
+            except EOFError:
+                answer = ""
+            if answer not in ("y", "yes"):
+                print(_("cancelled"))
+                return 1
+        rc = subprocess.call(update_command(), shell=True)
+        if rc != 0:
+            sys.stderr.write(_("the installer failed (exit %d)\n") % rc)
+            return rc
+        run_cmd(["systemctl", "--user", "restart", "ccdo"])
+        print(_("updated — the tray was restarted"))
         return 0
 
     if cmd == "path":

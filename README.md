@@ -431,7 +431,12 @@ Code session.
 ccdo version            # the installed version
 ccdo version --check    # ask GitHub whether a newer one is out
 ccdo update             # print the update command
+ccdo update --apply     # run it, then restart the tray
 ```
+
+`--apply` is opt-in on purpose: piping a remote script into a shell is not
+something to do behind your back, so without the flag the command is only
+printed. It asks before running unless you pass `--yes`.
 
 Once a day the tray checks in the background whether a newer release exists and
 adds an **Update available** line to the menu if so. Asking on every start
@@ -616,7 +621,7 @@ ccdo done <id> | delete <id>
 ccdo history [n]                    # what left the queue (completed + deleted)
 ccdo show | toggle
 ccdo log [n] [target]               # delivery decisions: what went, what didn't, why
-ccdo version [--check] | update
+ccdo version [--check] | update [--apply]
 ccdo diag                           # walk through theme and name resolution
 ccdo path
 ```

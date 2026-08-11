@@ -145,6 +145,11 @@
   "up to date": "güncel",
   "could not read version info": "sürüm bilgisi alınamadı",
   "already up to date (%s)": "zaten güncel (%s)",
+  "To run it now: ccdo update --apply": "Şimdi çalıştırmak için: ccdo update --apply",
+  "Run it now? [y/N] ": "Şimdi çalıştırılsın mı? [e/H] ",
+  "cancelled": "vazgeçildi",
+  "the installer failed (exit %d)\n": "kurulum betiği başarısız oldu (çıkış %d)\n",
+  "updated — the tray was restarted": "güncellendi — tray yeniden başlatıldı",
   "The installer replaces ccdo in place; your settings, queue": "Kurulum betiği ccdo'yu yerine yazar; ayarların, kuyruğun ve",
   "and history stay put. Then: systemctl --user restart ccdo": "geçmişin durur. Sonra: systemctl --user restart ccdo",
 
