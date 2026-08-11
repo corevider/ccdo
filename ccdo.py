@@ -298,19 +298,41 @@ def check_update(cfg=None, force=False, timeout=6):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
         latest = (data.get("tag_name") or "").strip()
+        notes = (data.get("body") or "").strip()
     except Exception as e:
         if DEBUG:
             sys.stderr.write("[ccdo] guncelleme bakilamadi: %s\n" % e)
         cache["checked_at"] = time.time()
-        latest = cache.get("latest", "")
     else:
-        cache = {"checked_at": time.time(), "latest": latest}
+        # The notes are cached with the tag so the window can show them
+        # without a second round trip — and without the network at all if the
+        # user opens the dialog later.
+        cache = {"checked_at": time.time(), "latest": latest, "notes": notes}
     try:
         ensure_dirs()
         atomic_write(UPDATE_PATH, json.dumps(cache, ensure_ascii=False) + "\n")
     except OSError:
         pass
     return cache
+
+
+def plain_markdown(text):
+    """Flatten release-note markdown for a plain TextView.
+
+    The notes come from GitHub as markdown; showing the raw markers turns a
+    short list into visual noise, and pulling in a renderer for four kinds of
+    marker would be a poor trade.
+    """
+    out = []
+    for line in (text or "").splitlines():
+        line = re.sub(r"^(#+)\s*(.+)$", lambda m: m.group(2).upper(), line)
+        line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+        line = re.sub(r"`([^`]+)`", r"\1", line)
+        line = re.sub(r"^\s*[-*]\s+", "  • ", line)
+        if line.strip() in ("```", "```bash", "```sh"):
+            continue
+        out.append(line)
+    return "\n".join(out).strip()
 
 
 def update_command():
@@ -4201,26 +4223,105 @@ def start_gui(use_statusicon=False):
             threading.Thread(target=work, daemon=True).start()
 
         def show_update(self):
-            latest = read_update_cache().get("latest", "")
-            dlg = Gtk.MessageDialog(
-                transient_for=self.win, modal=True,
-                message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.CLOSE,
-                text=_("ccdo %s is out (you have %s)") % (latest, VERSION))
-            dlg.format_secondary_text(
-                _("Run this in a terminal:\n\n%s\n\n"
-                  "Your settings, queue and history stay put.\n"
-                  "Then: systemctl --user restart ccdo") % update_command())
+            """The update window: what changed, and a button that does it.
+
+            The notes are the ones GitHub published, cached alongside the tag,
+            so opening this needs no network and no browser.
+            """
+            cache = read_update_cache()
+            latest = cache.get("latest", "")
+            dlg = Gtk.Dialog(title=_("Update"), transient_for=self.win, modal=True)
+            add_headerbar(dlg, _("Update"))
             dlg.get_style_context().add_class("jd-window")
+            dlg.set_default_size(520, 460)
             mark_body(dlg)
+
             box = dlg.get_content_area()
-            btn = Gtk.Button(label=_("Open the release notes"))
-            btn.set_halign(Gtk.Align.START)
-            btn.connect("clicked",
-                        lambda *_: subprocess.Popen(["xdg-open", RELEASES_URL]))
-            box.pack_start(btn, False, False, 6)
+            box.set_spacing(10)
+            for setter in ("set_margin_start", "set_margin_end",
+                           "set_margin_top", "set_margin_bottom"):
+                getattr(box, setter)(16)
+
+            head = Gtk.Label(xalign=0,
+                             label=_("ccdo %s is out (you have %s)") % (latest, VERSION))
+            head.get_style_context().add_class("jd-title")
+            box.pack_start(head, False, False, 0)
+
+            notes = Gtk.TextView()
+            notes.set_editable(False)
+            notes.set_cursor_visible(False)
+            notes.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            notes.get_style_context().add_class("jd-input")
+            notes.get_buffer().set_text(
+                plain_markdown(cache.get("notes")) or _("No release notes."))
+            sw = Gtk.ScrolledWindow()
+            sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            sw.add(notes)
+            box.pack_start(sw, True, True, 0)
+
+            self.up_status = Gtk.Label(xalign=0, label="")
+            self.up_status.get_style_context().add_class("jd-hint")
+            self.up_status.set_line_wrap(True)
+            box.pack_start(self.up_status, False, False, 0)
+
+            link = Gtk.Button(label=_("Open on GitHub"))
+            link.set_halign(Gtk.Align.START)
+            link.connect("clicked",
+                         lambda *_a: subprocess.Popen(["xdg-open", RELEASES_URL]))
+            box.pack_start(link, False, False, 0)
+
+            dlg.add_button(_("Close"), Gtk.ResponseType.CLOSE)
+            self.up_btn = dlg.add_button(_("Update now"), Gtk.ResponseType.APPLY)
+            self.up_btn.get_style_context().add_class("suggested-action")
             box.show_all()
-            dlg.run()
+
+            while True:
+                resp = dlg.run()
+                if resp != Gtk.ResponseType.APPLY:
+                    break
+                self.start_update()
             dlg.destroy()
+
+        def start_update(self):
+            """Run the installer without freezing the window.
+
+            The work happens on a thread; only the reporting comes back to the
+            main loop. Restarting is left to systemd — the process replacing
+            its own binary cannot restart itself.
+            """
+            self.up_btn.set_sensitive(False)
+            self.up_status.set_text(_("Updating…"))
+
+            def done(rc, tail):
+                if rc == 0:
+                    self.up_status.set_text(_("Updated. Restarting…"))
+                    notify("ccdo", _("Updated. Restarting…"), cfg)
+                    GLib.timeout_add(900, self.restart_self)
+                else:
+                    self.up_btn.set_sensitive(True)
+                    self.up_status.set_text(
+                        _("Update failed: %s") % (tail.strip()[-160:] or rc))
+                return False
+
+            def work():
+                try:
+                    p = subprocess.run(update_command(), shell=True,
+                                       capture_output=True, text=True, timeout=300)
+                    rc, tail = p.returncode, (p.stderr or p.stdout or "")
+                except Exception as e:
+                    rc, tail = 1, str(e)
+                GLib.idle_add(done, rc, tail)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def restart_self(self):
+            rc, _out, _err = run_cmd(["systemctl", "--user", "restart", APP_NAME])
+            if rc != 0:
+                # Not running under systemd: the new binary is in place, but
+                # only a restart picks it up, so quit and say so.
+                notify("ccdo", _("Updated — start ccdo again to use it."), cfg)
+                Gtk.main_quit()
+            return False
 
         def open_settings(self):
             dlg = SettingsDialog(self.win, cfg)
