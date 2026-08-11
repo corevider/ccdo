@@ -2848,11 +2848,13 @@ def start_gui(use_statusicon=False):
     def mark_body(dialog):
         """Mark a dialog's body with .jd-body.
 
-        Element-level rules (button, entry, switch…) live under .jd-body. Put
-        on the window itself, they would drag the title bar's close/minimise/
-        maximise buttons into our flat button style, when those have to look
-        like the desktop's own. The inner box covers both the content and the
-        button strip, but not the title bar.
+        Element-level rules (button, entry, switch…) live under .jd-body
+        rather than .jd-window: on the note window, which has a HeaderBar,
+        .jd-window would drag the title bar's close/minimise/maximise buttons
+        into our flat button style when they have to look like the desktop's
+        own. Dialogs carry no HeaderBar, so landing on the dialog itself is
+        harmless — what matters is that the content and the button strip are
+        both covered.
         """
         area = dialog.get_content_area()
         (area.get_parent() or area).get_style_context().add_class("jd-body")
@@ -4376,9 +4378,9 @@ def start_gui(use_statusicon=False):
             self.menu.append(Gtk.SeparatorMenuItem())
             item(_("Scan sessions"), self.discover)
             item(_("Clear completed"), lambda: (store.purge_done(), self.request_refresh()))
-            item(_("Settings…"), self.open_settings)
             item(_("Queue file"), lambda: open_in_editor(QUEUE_MD))
             item(_("Decision log"), lambda: open_in_editor(EVENTS_PATH))
+            item(_("Settings…"), self.open_settings)
             item(_("Quit"), Gtk.main_quit)
             self.menu.show_all()
 
