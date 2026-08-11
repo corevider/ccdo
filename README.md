@@ -7,25 +7,7 @@ interrupting the session**, then hand it over when the current work finishes.
 The window opens **a tab per live Claude Code session**. A note goes to the
 session whose tab you wrote it under — no guessing.
 
-```
-┌────────────────────────────────────────┐
-│ ccdo                        ─  □  ✕    │   ← the desktop's own buttons
-│ ✓ api-server │ ● web-ui │ ideabox      │   ← tabs, in the session color
-├────────────────────────────────────────┤
-│ ┃ API-SERVER                 ● idle    │   ← card
-│ ┃ (api) (%3) (theme: /color)           │   ← identity chips
-│ ┃ /home/you/dev/api                    │
-│ ┃ ┌──────────────────────────────────┐ │
-│ ┃ │ Click to add a note…             │ │
-│ ┃ └──────────────────────────────────┘ │
-│ ┃ Enter: Add • …         [Add]   [★]   │
-│ ┌────────────────────────────────────┐ │
-│ │ 1 ▲▼ ★ Fix the retry loop  ▶ ✎ ✓ ✕ │ │   ← task cards
-│ └────────────────────────────────────┘ │
-│ › History (16)                         │
-│ (●—) AUTO  takes the…  [✈ SEND NEXT]   │   ← mode left, action right
-└────────────────────────────────────────┘
-```
+<img src="docs/note-window.png" alt="The ccdo window: a tab per session, the queue below" width="560">
 
 ## Install
 
@@ -700,6 +682,8 @@ rather than the moment of the move, or they would all bunch up on today.
 `max_auto_advance`, are there with a line of explanation each. Saving writes to
 `config.json` and takes effect in the running tray at once — no restart.
 
+<img src="docs/settings-window.png" alt="The settings window" width="560">
+
 The window is generated from the `SETTINGS_SCHEMA` table; because the table is
 the single source, the window cannot fall behind when a setting is added
 (`test_settings.py` checks the schema and `DEFAULT_CONFIG` have not drifted).
@@ -772,6 +756,12 @@ runtime would notice.
 
 `test_deliver_lock.py` and `test_payload.py` open a real tmux pane when tmux is
 available and exercise the send-keys route too; without it they skip that part.
+
+The screenshots above are produced by `tools/screenshots.py`, which draws the
+real windows offscreen with GTK against seeded data — so refreshing them after
+a design change is one command, and no one has to arrange a desktop and crop a
+photo. It runs in a temporary XDG directory and makes the session scan match
+nothing, so a real session can never end up in an image.
 
 ## Known limits
 
