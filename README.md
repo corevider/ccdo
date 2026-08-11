@@ -14,6 +14,26 @@ session whose tab you wrote it under — no guessing.
        alt="The ccdo window: a tab per session, the queue below">
 </picture>
 
+## What runs where
+
+| | Queue, hooks, `/next` | Delivery into the prompt | Tray window |
+|---|---|---|---|
+| **Linux** | yes | yes, over tmux | yes |
+| **macOS** | yes | yes, over tmux | **no** |
+| **Windows** | in WSL | in WSL | in WSL |
+
+The tray needs GTK 3 and an AppIndicator, which is a Linux desktop story.
+macOS has neither, so there is no window there — but everything else works:
+the queue, the Claude Code hooks, auto-advance, the decision log, and delivery
+straight into a session running under tmux. You add notes with `ccdo add` and
+pull them with `/next`. Running `ccdo` with no arguments says so rather than
+crashing.
+
+Native Windows is not supported and is not planned. Without tmux the thing
+that makes ccdo worth using — typing the task into a waiting prompt — cannot
+exist, so what would be left is the queue alone. Under WSL it is Linux and
+everything above applies.
+
 ## Install
 
 ```bash
@@ -24,11 +44,13 @@ ccdo install-hooks
 Then restart any running Claude Code sessions. To remove it later:
 `ccdo-uninstall` (add `--purge` to delete your queue and settings too).
 
-The installer pulls `python3-gi`, GTK 3, `libayatana-appindicator`,
-`libnotify-bin` and `tmux` through apt, drops `ccdo` and `claude-tmux` into
-`~/.local/bin`, and enables a systemd user service. On distributions without
-apt the package step is skipped and you install those by hand. Nothing else is
-required: Python 3 and GTK 3 are the whole dependency list.
+The installer works out what is missing before it reaches for a package
+manager — an update run needs none of it — and knows `apt`, `dnf`, `pacman`,
+`zypper` and Homebrew. It drops `ccdo` and `claude-tmux` into `~/.local/bin`,
+and on Linux enables a systemd user service. Nothing else is required: Python 3
+and GTK 3 are the whole dependency list, and only the window needs GTK.
+
+`CCDO_SKIP_DEPS=1` skips the package step entirely.
 
 On GNOME the tray icon needs an extension:
 
@@ -757,6 +779,7 @@ and stops if the paths are not in the temp directory).
 | `test_theme.py` | both palettes carry the same keys, contrast is sufficient, light/dark is detected from the right source |
 | `test_version.py` | version comparison and the update check; the network is never required |
 | `test_i18n.py` | every source string is translated, format placeholders survive, language detection works |
+| `test_platform.py` | the desktop calls pick the right tool per platform, and do nothing where there is none |
 
 CI runs the same suite on every push and pull request, and also rebuilds
 `ccdo-setup.sh` to check it is in step with the sources — the installer embeds
@@ -783,6 +806,8 @@ nothing, so a real session can never end up in an image.
   means no session tab, and you fall back to the inbox plus `xdotool` or
   `/next`. `tmux new -s api -c ~/dev/api 'claude'` is the practical fix.
 - `xdotool` does not work on Wayland; the tmux route works on both.
+- On macOS there is no tray window (see **What runs where**). The queue, the
+  hooks and tmux delivery all work; you drive it from the CLI and `/next`.
 
 ## Troubleshooting
 

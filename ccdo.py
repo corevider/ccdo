@@ -43,6 +43,13 @@ from datetime import datetime
 
 APP_NAME = "ccdo"
 VERSION = "1.0.4"
+
+# The desktop half (tray, window, notifications) is Linux; the queue, the
+# hooks and the tmux delivery run anywhere Unix. Rather than sprinkle
+# sys.platform checks around, the handful of places that shell out to a
+# desktop tool branch on these.
+IS_MAC = sys.platform == "darwin"
+IS_WINDOWS = os.name == "nt"
 REPO = "corevider/ccdo"
 DEBUG = bool(os.environ.get("CCDO_DEBUG"))
 
@@ -347,6 +354,11 @@ def prefers_dark(settings=None):
     name. None of them is enough alone: on Yaru, color-scheme can say
     'prefer-dark' while gtk-application-prefer-dark-theme stays False.
     """
+    if IS_MAC:
+        # macOS sets this key only while dark is on; missing means light.
+        rc, out, __ = run_cmd(["defaults", "read", "-g", "AppleInterfaceStyle"])
+        return rc == 0 and "dark" in out.lower()
+
     rc, out, __ = run_cmd(["gsettings", "get",
                           "org.gnome.desktop.interface", "color-scheme"])
     if rc == 0:
@@ -476,15 +488,27 @@ def text_glyph(ch):
 
 
 def notify(title, body, cfg=None):
+    """A desktop notification, where the desktop offers one."""
     if cfg is not None and not cfg.get("notify", True):
         return
-    if not shutil.which("notify-send"):
+    if IS_MAC:
+        script = ('display notification %s with title %s'
+                  % (applescript_string(body), applescript_string(title)))
+        args = ["osascript", "-e", script]
+    else:
+        args = ["notify-send", "-a", APP_NAME, "-i", "accessories-text-editor",
+                title, body]
+    if not shutil.which(args[0]):
         return
     try:
-        subprocess.run(["notify-send", "-a", APP_NAME, "-i", "accessories-text-editor",
-                        title, body], check=False, timeout=5)
+        subprocess.run(args, check=False, timeout=5)
     except Exception:
         pass
+
+
+def applescript_string(text):
+    """Quote a string for osascript. AppleScript escapes with backslashes."""
+    return '"%s"' % (text or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
 GUI_EDITORS = ("gnome-text-editor", "gedit", "kate", "mousepad", "xed",
@@ -499,6 +523,15 @@ def open_in_editor(path):
     the default application for text/plain first, then the editors we know of,
     and only fall back to xdg-open.
     """
+    if IS_MAC:
+        # -t hands the file to the default *text* editor rather than whatever
+        # claims the extension, which is the same problem xdg-open has.
+        try:
+            subprocess.Popen(["open", "-t", path])
+            return True
+        except OSError:
+            pass
+
     if shutil.which("gtk-launch"):
         rc, out, __ = run_cmd(["xdg-mime", "query", "default", "text/plain"])
         desktop = out.strip() if rc == 0 else ""
@@ -2561,9 +2594,20 @@ class IPCServer(threading.Thread):
 # --------------------------------------------------------------------------- #
 
 def start_gui(use_statusicon=False):
-    import gi
-    gi.require_version("Gtk", "3.0")
-    from gi.repository import Gtk, Gdk, GLib, Pango
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk, Gdk, GLib, Pango
+    except (ImportError, ValueError) as e:
+        # The tray needs GTK and a Linux desktop. Everything else — the queue,
+        # the hooks, delivery over tmux — runs without it, so say what is
+        # missing rather than dying with an import trace.
+        sys.stderr.write(
+            "ccdo: the tray window needs GTK 3 and is Linux-only (%s).\n"
+            "The queue and the Claude Code hooks work without it:\n"
+            "    ccdo add \"a note\"   ccdo list   ccdo next   ccdo install-hooks\n"
+            % e)
+        return 1
 
     Indicator = None
     if not use_statusicon:
