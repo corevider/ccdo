@@ -12,14 +12,22 @@ if [ -z "$SRC" ] || [ ! -f "$SRC/ccdo.py" ]; then
   need curl; need tar
   SRC="$(mktemp -d)"
   trap 'rm -rf "$SRC"' EXIT
-  # CCDO_REF pins what to install. `ccdo update` passes the tag it just told
-  # you about, so you get that release and not whatever main happens to be.
-  REF="${CCDO_REF:-main}"
+  # Install the latest release by default. main is where work in progress
+  # lands, so handing it to someone running the install line would give them
+  # something that was never released. CCDO_REF overrides it — `ccdo update`
+  # passes the tag it just told you about, and you can name any tag or branch.
+  REF="${CCDO_REF:-}"
+  if [ -z "$REF" ]; then
+    REF="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+           | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
+    # No releases yet, or the API is unreachable: main is the only thing left.
+    [ -n "$REF" ] || REF=main
+  fi
   case "$REF" in
     v*) url="https://github.com/$REPO/archive/refs/tags/$REF.tar.gz" ;;
     *)  url="https://github.com/$REPO/archive/refs/heads/$REF.tar.gz" ;;
   esac
-  echo "   ref: $REF"
+  echo "   version: $REF"
   curl -fsSL "$url" | tar xz -C "$SRC" --strip-components=1
 fi
 case "$(uname -s)" in

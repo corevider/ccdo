@@ -47,6 +47,15 @@ ccdo install-hooks
 Then restart any running Claude Code sessions. To remove it later:
 `ccdo-uninstall` (add `--purge` to delete your queue and settings too).
 
+The install line takes the latest release. `main` is where work in progress
+lands, so handing that to someone installing for the first time would give
+them something that was never released. To pin a version — to go back after a
+bad release, say:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/corevider/ccdo/main/install.sh | CCDO_REF=v1.0.6 bash
+```
+
 The installer works out what is missing before it reaches for a package
 manager — an update run needs none of it — and knows `apt`, `dnf`, `pacman`,
 `zypper` and Homebrew. It drops `ccdo` and `claude-tmux` into `~/.local/bin`
@@ -455,9 +464,8 @@ ccdo update --apply     # run it, then restart the tray
 something to do behind your back, so without the flag the command is only
 printed. It asks before running unless you pass `--yes`.
 
-The command pins the release it just told you about (`CCDO_REF=v1.2.3`).
-Installing `main` instead would have handed over whatever happened to be on
-the branch, which is not what the update notice said was coming.
+The command pins the release it just told you about (`CCDO_REF=v1.2.3`), so
+what arrives is what the notice named.
 
 Once a day the tray checks in the background whether a newer release exists and
 adds an **Update available** line to the menu if so. Asking on every start
