@@ -8,7 +8,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/ccdo-setup.sh"
-FILES=(ccdo.py ccdo.desktop ccdo.service install.sh uninstall.sh README.md LICENSE
+FILES=(ccdo.py ccdo.desktop ccdo.service ccdo.plist install.sh uninstall.sh
+       README.md LICENSE
        claude-commands/next.md claude-commands/queue.md
        locales/tr.json)
 

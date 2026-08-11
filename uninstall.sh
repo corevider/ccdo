@@ -13,9 +13,16 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}/ccdo"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/ccdo"
 
 echo "==> Service"
-systemctl --user disable --now ccdo.service 2>/dev/null || true
-rm -f "$UNITS/ccdo.service"
-systemctl --user daemon-reload 2>/dev/null || true
+if [ "$(uname -s)" = "Darwin" ]; then
+  plist="$HOME/Library/LaunchAgents/com.corevider.ccdo.plist"
+  launchctl bootout "gui/$(id -u)/com.corevider.ccdo" 2>/dev/null \
+    || launchctl unload -w "$plist" 2>/dev/null || true
+  rm -f "$plist"
+else
+  systemctl --user disable --now ccdo.service 2>/dev/null || true
+  rm -f "$UNITS/ccdo.service"
+  systemctl --user daemon-reload 2>/dev/null || true
+fi
 
 echo "==> Files"
 rm -f "$BIN/ccdo" "$BIN/claude-tmux" "$BIN/ccdo-uninstall" "$APPS/ccdo.desktop"

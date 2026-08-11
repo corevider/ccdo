@@ -25,6 +25,7 @@ BIN="$HOME/.local/bin"
 APPS="$HOME/.local/share/applications"
 UNITS="$HOME/.config/systemd/user"
 LOCALES="${XDG_DATA_HOME:-$HOME/.local/share}/ccdo/locales"
+AGENTS="$HOME/Library/LaunchAgents"
 
 echo "==> Dependencies"
 # Only reach for a package manager if something is actually missing. An update
@@ -32,6 +33,8 @@ echo "==> Dependencies"
 # GUI-triggered update where there is no terminal to type a password into.
 missing=0
 if [ "$OS" = "mac" ]; then
+  python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" \
+    >/dev/null 2>&1 || missing=1
   command -v tmux >/dev/null 2>&1 || missing=1
 else
   python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" \
@@ -48,9 +51,10 @@ if [ "${CCDO_SKIP_DEPS:-}" = "1" ] || [ "$missing" = "0" ]; then
   echo "   already satisfied, skipping the package manager"
 elif [ "$OS" = "mac" ]; then
   if command -v brew >/dev/null 2>&1; then
-    brew install tmux
+    brew install pygobject3 gtk+3 tmux
   else
-    echo "!! Homebrew not found — install tmux yourself: https://brew.sh"
+    echo "!! Homebrew not found — install it first: https://brew.sh"
+    echo "   then: brew install pygobject3 gtk+3 tmux"
   fi
 elif command -v apt >/dev/null 2>&1; then
   sudo apt update
@@ -115,6 +119,9 @@ fi
 if [ "$OS" = "linux" ]; then
   sed "s|@BIN@|$BIN|" "$SRC/ccdo.desktop" > "$APPS/ccdo.desktop"
   install -m 644 "$SRC/ccdo.service" "$UNITS/ccdo.service"
+elif [ "$OS" = "mac" ]; then
+  install -d "$AGENTS"
+  sed "s|@BIN@|$BIN|" "$SRC/ccdo.plist" > "$AGENTS/com.corevider.ccdo.plist"
 fi
 
 case ":$PATH:" in
@@ -129,12 +136,20 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --user enable --now ccdo.service || {
     echo "systemd failed — you can run the 'ccdo' command by hand."
   }
+elif [ "$OS" = "mac" ]; then
+  # launchd is the equivalent of the systemd user unit: start at login and
+  # come back after a crash.
+  plist="$AGENTS/com.corevider.ccdo.plist"
+  launchctl bootout "gui/$(id -u)/com.corevider.ccdo" 2>/dev/null || true
+  if launchctl bootstrap "gui/$(id -u)" "$plist" 2>/dev/null; then
+    echo "   launchd agent loaded (starts at login)"
+  else
+    launchctl load -w "$plist" 2>/dev/null \
+      && echo "   launchd agent loaded (starts at login)" \
+      || echo "   could not load the launchd agent — run 'ccdo' by hand"
+  fi
 else
-  # The tray needs GTK and an AppIndicator, which is a Linux desktop story.
-  # Everywhere else ccdo is the queue, the hooks and delivery over tmux.
-  echo "   no systemd here — the tray window is Linux-only."
-  echo "   The queue and the Claude Code hooks work as they are:"
-  echo "     ccdo add \"a note\"   ccdo list   ccdo next   /next in a session"
+  echo "   no service manager here — run 'ccdo' by hand."
 fi
 
 cat <<'EOF'

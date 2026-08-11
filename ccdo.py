@@ -4432,7 +4432,12 @@ def start_gui(use_statusicon=False):
             threading.Thread(target=work, daemon=True).start()
 
         def restart_self(self):
-            rc, _out, _err = run_cmd(["systemctl", "--user", "restart", APP_NAME])
+            if IS_MAC:
+                rc, _out, _err = run_cmd(
+                    ["launchctl", "kickstart", "-k",
+                     "gui/%d/com.corevider.ccdo" % os.getuid()])
+            else:
+                rc, _out, _err = run_cmd(["systemctl", "--user", "restart", APP_NAME])
             if rc != 0:
                 # Not running under systemd: the new binary is in place, but
                 # only a restart picks it up, so quit and say so.
@@ -4953,7 +4958,11 @@ def main(argv):
         if rc != 0:
             sys.stderr.write(_("the installer failed (exit %d)\n") % rc)
             return rc
-        run_cmd(["systemctl", "--user", "restart", "ccdo"])
+        if IS_MAC:
+            run_cmd(["launchctl", "kickstart", "-k",
+                     "gui/%d/com.corevider.ccdo" % os.getuid()])
+        else:
+            run_cmd(["systemctl", "--user", "restart", "ccdo"])
         print(_("updated — the tray was restarted"))
         return 0
 

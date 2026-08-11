@@ -16,18 +16,21 @@ session whose tab you wrote it under — no guessing.
 
 ## What runs where
 
-| | Queue, hooks, `/next` | Delivery into the prompt | Tray window |
+| | Queue, hooks, `/next` | Delivery into the prompt | Window and tray |
 |---|---|---|---|
 | **Linux** | yes | yes, over tmux | yes |
-| **macOS** | yes | yes, over tmux | **no** |
+| **macOS** | yes | yes, over tmux | yes, via Homebrew GTK |
 | **Windows** | in WSL | in WSL | in WSL |
 
-The tray needs GTK 3 and an AppIndicator, which is a Linux desktop story.
-macOS has neither, so there is no window there — but everything else works:
-the queue, the Claude Code hooks, auto-advance, the decision log, and delivery
-straight into a session running under tmux. You add notes with `ccdo add` and
-pull them with `/next`. Running `ccdo` with no arguments says so rather than
-crashing.
+On macOS the installer pulls `pygobject3`, `gtk+3` and `tmux` through Homebrew,
+and registers a launchd agent so ccdo starts at login — the same job the
+systemd user unit does on Linux. The tray icon lands in the menu bar.
+
+Two things there are not what a Linux install gives you. There is no
+AppIndicator on macOS, so the tray falls back to `Gtk.StatusIcon`, which means
+the icon carries no pending-task badge — the count is in the menu and the
+tooltip instead. And GdkPixbuf on macOS usually ships without an SVG loader,
+so the icon is drawn with Cairo and saved as PNG rather than used as a vector.
 
 Native Windows is not supported and is not planned. Without tmux the thing
 that makes ccdo worth using — typing the task into a waiting prompt — cannot
@@ -46,9 +49,14 @@ Then restart any running Claude Code sessions. To remove it later:
 
 The installer works out what is missing before it reaches for a package
 manager — an update run needs none of it — and knows `apt`, `dnf`, `pacman`,
-`zypper` and Homebrew. It drops `ccdo` and `claude-tmux` into `~/.local/bin`,
-and on Linux enables a systemd user service. Nothing else is required: Python 3
-and GTK 3 are the whole dependency list, and only the window needs GTK.
+`zypper` and Homebrew. It drops `ccdo` and `claude-tmux` into `~/.local/bin`
+and registers a service that starts at login: a systemd user unit on Linux, a
+launchd agent on macOS. Nothing else is required: Python 3 and GTK 3 are the
+whole dependency list, and only the window needs GTK.
+
+It also pins the installed copy's shebang to a `python3` that can import `gi`.
+`env python3` is not enough — Homebrew puts PyGObject in its own Python while
+`/usr/bin/python3` wins the PATH, and a virtualenv can do the same on Linux.
 
 `CCDO_SKIP_DEPS=1` skips the package step entirely.
 
@@ -806,8 +814,8 @@ nothing, so a real session can never end up in an image.
   means no session tab, and you fall back to the inbox plus `xdotool` or
   `/next`. `tmux new -s api -c ~/dev/api 'claude'` is the practical fix.
 - `xdotool` does not work on Wayland; the tmux route works on both.
-- On macOS there is no tray window (see **What runs where**). The queue, the
-  hooks and tmux delivery all work; you drive it from the CLI and `/next`.
+- On macOS the icon carries no task count, because `Gtk.StatusIcon` has no
+  badge — the number is in the menu and the tooltip.
 
 ## Troubleshooting
 
