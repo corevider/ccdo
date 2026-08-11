@@ -82,7 +82,30 @@ fi
 
 echo "==> Files"
 mkdir -p "$BIN" "$APPS" "$UNITS"
+# Pick an interpreter that can actually import gi. `env python3` is not
+# enough: on macOS Homebrew installs PyGObject into its own Python while
+# /usr/bin/python3 wins the PATH, and a virtualenv can do the same on Linux.
+# The queue and the hooks run on any python3, but the window needs this one.
+PY=""
+for cand in "$(command -v python3 || true)" /opt/homebrew/bin/python3 \
+            /usr/local/bin/python3 /usr/bin/python3; do
+  [ -x "$cand" ] || continue
+  if "$cand" -c "import gi" >/dev/null 2>&1; then PY="$cand"; break; fi
+done
+if [ -z "$PY" ]; then
+  PY="$(command -v python3)"
+  echo "   no python3 with PyGObject found — installing for $PY"
+  echo "   (the queue and the hooks work; the tray window will not start)"
+else
+  echo "   interpreter: $PY"
+fi
+
 install -m 755 "$SRC/ccdo.py" "$BIN/ccdo"
+# Rewrite the shebang so ccdo always runs under the interpreter we picked.
+tmp_ccdo="$(mktemp)"
+{ printf '#!%s\n' "$PY"; tail -n +2 "$BIN/ccdo"; } > "$tmp_ccdo"
+install -m 755 "$tmp_ccdo" "$BIN/ccdo"
+rm -f "$tmp_ccdo"
 install -m 755 "$SRC/tools/claude-tmux" "$BIN/claude-tmux"
 install -m 755 "$SRC/uninstall.sh" "$BIN/ccdo-uninstall"
 if [ -d "$SRC/locales" ]; then
