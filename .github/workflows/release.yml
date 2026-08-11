@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # changelog.py needs the history and the tags
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Run the test suite
+        run: bash tests/run.sh
+
+      # A tag that disagrees with VERSION breaks the update check silently:
+      # ccdo would keep offering an update the user already has.
+      - name: VERSION matches the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver=$(python3 -c "import re;print(re.search(r'^VERSION = \"(.+)\"', open('ccdo.py').read(), re.M).group(1))")
+          echo "tag=$tag  VERSION=$ver"
+          [ "$tag" = "$ver" ] || { echo "::error::tag $tag != VERSION $ver"; exit 1; }
+
+      - name: Build the release notes
+        run: |
+          {
+            python3 tools/changelog.py
+            echo
+            echo "### Install"
+            echo
+            echo '```bash'
+            echo "curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh | bash"
+            echo "ccdo install-hooks"
+            echo '```'
+            echo
+            echo "Updating replaces ccdo in place; your settings, queue and history stay put."
+          } > NOTES.md
+          cat NOTES.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file NOTES.md \
+            ccdo-setup.sh

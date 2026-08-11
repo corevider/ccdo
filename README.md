@@ -446,6 +446,28 @@ The check contacts `api.github.com` and nothing else, and
 
 Updating replaces ccdo in place; your settings, queue and history stay put.
 
+### Cutting a release
+
+```bash
+tools/release.sh patch     # or minor, major, or an explicit 1.2.3
+git push origin main && git push origin v1.2.3
+```
+
+The script bumps `VERSION`, runs the tests, rebuilds `ccdo-setup.sh`, prepends
+a section to `CHANGELOG.md` and tags the commit. Pushing the tag triggers
+`.github/workflows/release.yml`, which runs the tests again, checks the tag
+agrees with `VERSION` and publishes the release with notes built from the
+commit log.
+
+That check matters: a tag that disagrees with `VERSION` breaks the update check
+silently, leaving ccdo offering an update the user already has.
+
+Release notes and the `CHANGELOG.md` entry are both produced by
+`tools/changelog.py` from conventional commits (`feat:`, `fix:`, `perf:`), so
+they cannot say different things. Commits that carry no user-visible change
+(`chore`, `docs`, `test`, …) are left out; one that does not follow the
+convention still shows up under **Other** rather than vanishing.
+
 ## Translations
 
 Source strings are English. A catalog is a flat JSON file mapping the source
@@ -742,6 +764,11 @@ and stops if the paths are not in the temp directory).
 | `test_theme.py` | both palettes carry the same keys, contrast is sufficient, light/dark is detected from the right source |
 | `test_version.py` | version comparison and the update check; the network is never required |
 | `test_i18n.py` | every source string is translated, format placeholders survive, language detection works |
+
+CI runs the same suite on every push and pull request, and also rebuilds
+`ccdo-setup.sh` to check it is in step with the sources — the installer embeds
+them as base64 and goes stale the moment a source file moves, which nothing at
+runtime would notice.
 
 `test_deliver_lock.py` and `test_payload.py` open a real tmux pane when tmux is
 available and exercise the send-keys route too; without it they skip that part.

@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # tmux is optional for the suite, but two tests open a real pane and
+      # measure the bytes that reach it. Without tmux they skip, and the
+      # delivery route would go unchecked exactly where it is hardest to
+      # reason about.
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Run the test suite
+        run: bash tests/run.sh
+
+      # The installer embeds the sources as base64. It goes stale the moment
+      # a source file moves, and nothing at runtime would notice — so the
+      # build has to fail here instead.
+      - name: ccdo-setup.sh is in step with the sources
+        run: |
+          bash tools/make-setup.sh
+          git diff --exit-code ccdo-setup.sh \
+            || { echo "::error::ccdo-setup.sh is stale — run tools/make-setup.sh"; exit 1; }
