@@ -167,14 +167,21 @@ else
   echo "   no service manager here — run 'ccdo' by hand."
 fi
 
+# The hooks are what make the session match exact instead of guessed, and
+# everybody who installs ccdo wants them — leaving it as a step to remember
+# only meant it got forgotten. It merges into ~/.claude/settings.json rather
+# than overwriting, takes a backup first, and re-running replaces its own
+# entries instead of piling up. CCDO_SKIP_HOOKS=1 opts out.
+echo "==> Claude Code hooks"
+if [ "${CCDO_SKIP_HOOKS:-}" = "1" ]; then
+  echo "   skipped (CCDO_SKIP_HOOKS=1) — run 'ccdo install-hooks' when you want them"
+else
+  "$BIN/ccdo" install-hooks || echo "!! could not install the hooks — run 'ccdo install-hooks'"
+fi
+
 cat <<'EOF'
 
-Installed.
-
-IMPORTANT: install the Claude Code hooks too — they make the session match
-exact instead of guessed:
-    ccdo install-hooks
-Then restart any running Claude Code sessions.
+Installed. Restart any running Claude Code sessions so they pick up the hooks.
 
 Next steps
 ----------

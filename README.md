@@ -41,11 +41,17 @@ everything above applies.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/corevider/ccdo/main/install.sh | bash
-ccdo install-hooks
 ```
 
-Then restart any running Claude Code sessions. To remove it later:
-`ccdo-uninstall` (add `--purge` to delete your queue and settings too).
+Then restart any running Claude Code sessions so they pick up the hooks. To
+remove it later: `ccdo-uninstall` (add `--purge` to delete your queue and
+settings too).
+
+The installer sets up the Claude Code hooks for you. They are what make the
+session match exact instead of guessed, and everyone who installs ccdo wants
+them. It merges into `~/.claude/settings.json` rather than overwriting, takes
+a backup first, and re-running replaces its own entries instead of piling up.
+`CCDO_SKIP_HOOKS=1` opts out, and `ccdo install-hooks` does it later.
 
 The install line takes the latest release. `main` is where work in progress
 lands, so handing that to someone installing for the first time would give
@@ -439,6 +445,9 @@ project and inherits it; the longest matching path wins, so a preference set on
 a subdirectory is not overridden by the one above.
 
 ### Installing the hooks
+
+The installer does this for you; `ccdo install-hooks` is for doing it later or
+after `CCDO_SKIP_HOOKS=1`.
 
 ```bash
 ccdo install-hooks              # write them

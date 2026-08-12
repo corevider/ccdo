@@ -2607,7 +2607,7 @@ def install_hooks(dry_run=False):
     if os.path.exists(CLAUDE_SETTINGS):
         backup = CLAUDE_SETTINGS + ".ccdo-bak"
         shutil.copy2(CLAUDE_SETTINGS, backup)
-        print("yedek: %s" % backup)
+        print("backup: %s" % backup)
     atomic_write(CLAUDE_SETTINGS, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
     print("wrote %d hook(s) -> %s" % (added, CLAUDE_SETTINGS))
     print("Restart any running Claude Code sessions.")
