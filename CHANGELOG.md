@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.18] - 2026-08-12
+
+### Fixed
+
+- **tmux:** keep a mouse selection going to the system clipboard (896b85c)
 ## [1.0.17] - 2026-08-12
 
 ### Added
