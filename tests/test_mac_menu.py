@@ -232,14 +232,30 @@ class Data(object):
         return True
 
 
+class Image(object):
+    """An NSImage as the pasteboard hands it over: TIFF inside."""
+
+    def __init__(self, tiff):
+        self.tiff = tiff
+
+    def TIFFRepresentation(self):
+        return Data(self.tiff)
+
+
 class Pasteboard(object):
     """A clipboard holding whatever a test puts on it."""
 
-    def __init__(self, png=None, tiff=None, files=()):
-        self.png, self.tiff, self.files = png, tiff, list(files)
+    def __init__(self, png=None, tiff=None, files=(), images=()):
+        self.png, self.tiff = png, tiff
+        self.files, self.images = list(files), list(images)
 
     def readObjectsForClasses_options_(self, classes, options):
+        if any(c is Image for c in classes):
+            return list(self.images)
         return [types.SimpleNamespace(path=lambda p=f: p) for f in self.files]
+
+    def types(self):
+        return [k for k, v in (("png", self.png), ("tiff", self.tiff)) if v]
 
     def dataForType_(self, kind):
         blob = {"png": self.png, "tiff": self.tiff}.get(kind)
@@ -291,9 +307,10 @@ def install_stubs(state):
     appkit.NSMenuItem = types.SimpleNamespace(
         alloc=lambda: Alloc(lambda *a: Item(*a[:2])),
         separatorItem=staticmethod(lambda: Item("---")))
-    appkit.NSImage = types.SimpleNamespace(
-        alloc=lambda: Alloc(lambda *a: types.SimpleNamespace(
-            setSize_=lambda s: None, setTemplate_=lambda f: state.__setitem__("template", f))))
+    Image.alloc = staticmethod(lambda: Alloc(lambda *a: types.SimpleNamespace(
+        setSize_=lambda s: None,
+        setTemplate_=lambda f: state.__setitem__("template", f))))
+    appkit.NSImage = Image
     appkit.NSAlert = types.SimpleNamespace(alloc=lambda: Alloc(lambda *a: None))
     appkit.NSWorkspace = types.SimpleNamespace(sharedWorkspace=lambda: None)
     appkit.NSVariableStatusItemLength = -1
@@ -312,7 +329,7 @@ def install_stubs(state):
     appkit.NSBitmapImageRep = types.SimpleNamespace(
         imageRepWithData_=lambda data: types.SimpleNamespace(
             representationUsingType_properties_=lambda kind, props:
-            Data(b"png-from-tiff") if kind == jd.PNG_FILE_TYPE else None))
+            Data(b"png-of-" + data.blob) if kind == jd.PNG_FILE_TYPE else None))
     # The AppKit constants are read with getattr and a fallback, so leaving
     # them out here exercises that path.
 
@@ -478,27 +495,43 @@ r.check(not jd._MAC_WINDOWS, "closing the window unregisters it")
 
 win = open_quick_note()
 
-state["pasteboard"] = Pasteboard(png=b"screenshot-bytes")
+# What a screenshot actually is: an NSImage on the pasteboard, TIFF inside.
+state["pasteboard"] = Pasteboard(images=[Image(b"shot")])
 win.tv.type("look at this")
 win.tv.paste_(None)
 saved = win.tv.text.split("\n")[1]
 r.check(win.tv.text.startswith("look at this\n"),
         "a path pasted mid-line starts on a line of its own", repr(win.tv.text))
-r.check(os.path.isfile(saved) and open(saved, "rb").read() == b"screenshot-bytes",
-        "the pixels are written next to the queue", saved)
-r.check(saved.startswith(jd.IMAGES_DIR), "and land in the images folder", saved)
+r.check(os.path.isfile(saved) and open(saved, "rb").read() == b"png-of-shot",
+        "an image of any flavour is read through NSImage and saved as PNG", saved)
+r.check(saved.startswith(jd.IMAGES_DIR), "and lands in the images folder", saved)
 
-state["pasteboard"] = Pasteboard(tiff=b"tiff-bytes")
+state["pasteboard"] = Pasteboard(images=[Image(b"one"), Image(b"two")])
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+r.check(len([l for l in win.tv.text.splitlines() if l]) == 2,
+        "two images take a line each", repr(win.tv.text))
+
+# NSImage reads everything worth pasting, so this only runs when it does not.
+state["pasteboard"] = Pasteboard(png=b"raw-png")
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+raw = win.tv.text.strip()
+r.check(os.path.isfile(raw) and open(raw, "rb").read() == b"raw-png",
+        "raw PNG data is still a fallback", raw)
+
+state["pasteboard"] = Pasteboard(tiff=b"raw-tiff")
 win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
 converted = win.tv.text.strip()
 r.check(os.path.isfile(converted)
-        and open(converted, "rb").read() == b"png-from-tiff",
-        "TIFF — what a screenshot usually is — is converted to PNG", converted)
+        and open(converted, "rb").read() == b"png-of-raw-tiff",
+        "and raw TIFF is converted on the way in", converted)
 
 existing = os.path.join(jd.IMAGES_DIR, "already-on-disk.png")
 open(existing, "wb").write(b"x")
-state["pasteboard"] = Pasteboard(png=b"ignored", files=[existing, "/tmp/not.txt"])
+state["pasteboard"] = Pasteboard(images=[Image(b"ignored")],
+                                 files=[existing, "/tmp/not.txt"])
 win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
 r.check(win.tv.text.strip() == existing,

@@ -2716,16 +2716,32 @@ def mac_action(fn):
 PNG_FILE_TYPE = 4                # NSBitmapImageFileTypePNG
 
 
+def png_data_from_image(image):
+    """An NSImage as PNG bytes, whatever it was made of."""
+    from AppKit import NSBitmapImageRep
+    tiff = image.TIFFRepresentation()
+    if tiff is None:
+        return None
+    rep = NSBitmapImageRep.imageRepWithData_(tiff)
+    if rep is None:
+        return None
+    return rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
+
+
 def images_from_pasteboard(pb):
     """Paths for the images on the pasteboard, saving pixels to disk as PNG.
 
     A screenshot arrives as pixels, not text, so a plain paste would write
     nothing at all. A file copied in Finder keeps its own path — re-saving it
     would only make a second copy.
+
+    Reading NSImage rather than asking for one flavour is what makes this hold
+    up: a screenshot is TIFF, a browser hands over PNG, Preview can offer
+    JPEG or HEIC, and NSImage takes all of them.
     """
+    import AppKit
     from Foundation import NSURL
-    from AppKit import (NSBitmapImageRep, NSPasteboardTypePNG,
-                        NSPasteboardTypeTIFF)
+    from AppKit import NSImage
 
     out = []
     for url in pb.readObjectsForClasses_options_([NSURL], None) or []:
@@ -2735,17 +2751,31 @@ def images_from_pasteboard(pb):
     if out:
         return out
 
-    data = pb.dataForType_(NSPasteboardTypePNG)
-    if data is None:
-        tiff = pb.dataForType_(NSPasteboardTypeTIFF)
-        rep = NSBitmapImageRep.imageRepWithData_(tiff) if tiff else None
-        if rep is not None:
-            data = rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
-    if data is None:
-        return out
-    path = new_image_path()
-    if data.writeToFile_atomically_(path, True):
-        out.append(path)
+    blobs = []
+    for image in pb.readObjectsForClasses_options_([NSImage], None) or []:
+        data = png_data_from_image(image)
+        if data is not None:
+            blobs.append(data)
+    if not blobs:
+        # A last resort for anything NSImage would not read.
+        for kind in (getattr(AppKit, "NSPasteboardTypePNG", "public.png"),
+                     getattr(AppKit, "NSPasteboardTypeTIFF", "public.tiff")):
+            data = pb.dataForType_(kind)
+            if data is None:
+                continue
+            if kind.endswith("tiff"):
+                from AppKit import NSBitmapImageRep
+                rep = NSBitmapImageRep.imageRepWithData_(data)
+                data = (rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
+                        if rep is not None else None)
+            if data is not None:
+                blobs.append(data)
+                break
+
+    for data in blobs:
+        path = new_image_path()
+        if data.writeToFile_atomically_(path, True):
+            out.append(path)
     return out
 
 
