@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.19] - 2026-08-12
+
+### Added
+
+- **tmux:** keep the terminal's own scrolling and selection by default (81db83f)
 ## [1.0.18] - 2026-08-12
 
 ### Fixed
