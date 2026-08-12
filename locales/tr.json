@@ -101,6 +101,7 @@
   "Click to add a note…": "Not eklemek için tıklayın…",
   "Enter: Add  •  Ctrl+Enter: Add + Send  •  Shift+Enter: Newline  •  Ctrl+V: Image": "Enter: Ekle  •  Ctrl+Enter: Ekle + Gönder  •  Shift+Enter: Satır  •  Ctrl+V: Görsel",
   "Add": "Ekle",
+  "Add and send": "Ekle ve gönder",
   "AUTO": "OTO",
   "Starred": "Öncelikli",
   "Star (does not change the order)": "Öncelikli işaret (sırayı değiştirmez)",
@@ -165,8 +166,7 @@
 
   "Quick note…": "Hızlı not…",
   "Quick note": "Hızlı not",
-  "Goes to the inbox.": "ideabox'a gider.",
-  "Note": "Not",
+  "Inbox": "Gelen kutusu",
   "Note window": "Not penceresi",
   "Note for this session…": "Bu oturuma not…",
   "Decision log": "Karar günlüğü",

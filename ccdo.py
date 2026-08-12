@@ -2695,27 +2695,95 @@ class IPCServer(threading.Thread):
 # This is a native front end over the same core — the queue, the hooks, the
 # delivery and the log are all shared, only the surface differs.
 #
-# It is deliberately smaller than the GTK window. On macOS the menu carries
-# what the window is for: see what is queued, park a note, hand the next one
-# over. Reordering, history and the settings window stay on Linux; the files
-# and the CLI cover them.
+# It is deliberately smaller than the GTK window. The menu carries what the
+# window is for — see what is queued, hand the next one over — and writing
+# happens in a note window of its own. Reordering, history and the settings
+# window stay on Linux; the files and the CLI cover them.
 
 _MAC_ACTIONS = {}                # menu item tag -> callable
+_MAC_TAG = [0]                   # tags are never reused, so a stale menu item
+                                 # cannot fire someone else's action
+_MAC_WINDOWS = []                # open note windows, held so Python keeps them
+
+
+def mac_action(fn):
+    """Park a callable behind a fresh tag and return the tag."""
+    _MAC_TAG[0] += 1
+    _MAC_ACTIONS[_MAC_TAG[0]] = fn
+    return _MAC_TAG[0]
+
+
+PNG_FILE_TYPE = 4                # NSBitmapImageFileTypePNG
+
+
+def images_from_pasteboard(pb):
+    """Paths for the images on the pasteboard, saving pixels to disk as PNG.
+
+    A screenshot arrives as pixels, not text, so a plain paste would write
+    nothing at all. A file copied in Finder keeps its own path — re-saving it
+    would only make a second copy.
+    """
+    from Foundation import NSURL
+    from AppKit import (NSBitmapImageRep, NSPasteboardTypePNG,
+                        NSPasteboardTypeTIFF)
+
+    out = []
+    for url in pb.readObjectsForClasses_options_([NSURL], None) or []:
+        path = str(url.path() or "")
+        if path.lower().endswith(IMAGE_SUFFIXES) and os.path.isfile(path):
+            out.append(path)
+    if out:
+        return out
+
+    data = pb.dataForType_(NSPasteboardTypePNG)
+    if data is None:
+        tiff = pb.dataForType_(NSPasteboardTypeTIFF)
+        rep = NSBitmapImageRep.imageRepWithData_(tiff) if tiff else None
+        if rep is not None:
+            data = rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
+    if data is None:
+        return out
+    path = new_image_path()
+    if data.writeToFile_atomically_(path, True):
+        out.append(path)
+    return out
 
 
 def start_mac_gui():
     """Run the macOS menu bar app. Returns False if PyObjC is unavailable."""
     try:
+        import AppKit
         from Foundation import NSObject, NSTimer, NSURL, NSMakeRect
         from AppKit import (NSApplication, NSStatusBar, NSMenu, NSMenuItem,
-                            NSImage, NSAlert, NSTextField, NSWorkspace,
-                            NSVariableStatusItemLength,
+                            NSImage, NSAlert, NSWorkspace, NSWindow, NSTextView,
+                            NSScrollView, NSPopUpButton, NSButton, NSFont,
+                            NSPasteboard, NSVariableStatusItemLength,
                             NSApplicationActivationPolicyAccessory)
     except Exception as e:
         sys.stderr.write(
             "ccdo: the menu bar app needs PyObjC (%s).\n"
             "    python3 -m pip install pyobjc-framework-Cocoa\n" % e)
         return False
+
+    # Read the AppKit constants by name with a fallback: the modern spellings
+    # (NSWindowStyleMaskTitled and friends) are missing from older PyObjC, and
+    # a menu bar app should not fail to open a window over a renamed constant.
+    def const(name, fallback):
+        return getattr(AppKit, name, fallback)
+
+    WINDOW_STYLE = (const("NSWindowStyleMaskTitled", 1)
+                    | const("NSWindowStyleMaskClosable", 2)
+                    | const("NSWindowStyleMaskResizable", 8))
+    BACKING = const("NSBackingStoreBuffered", 2)
+    WIDTH_SIZABLE = const("NSViewWidthSizable", 2)
+    HEIGHT_SIZABLE = const("NSViewHeightSizable", 16)
+    PIN_RIGHT = const("NSViewMinXMargin", 1)
+    PIN_LEFT = const("NSViewMaxXMargin", 4)
+    PIN_TOP = const("NSViewMaxYMargin", 32)
+    BEZEL_BORDER = const("NSBezelBorder", 2)
+    ROUNDED = const("NSRoundedBezelStyle", 1)
+    CMD_KEY = const("NSEventModifierFlagCommand", 1 << 20)
+    HUGE = 1.0e7
 
     cfg = load_config()
     load_language(cfg.get("language"))
@@ -2747,36 +2815,173 @@ def start_mac_gui():
             except Exception as e:
                 sys.stderr.write("[ccdo] refresh error: %s\n" % e)
 
+        def windowWillClose_(self, note):
+            """A closed note window gives its tags back."""
+            window = note.object()
+            for open_window in list(_MAC_WINDOWS):
+                if open_window.win is window:
+                    open_window.dismiss()
+
     dispatch = CcdoDispatch.alloc().init()
     SELECTOR = b"ccdoAction:"
 
-    def ask(title, body, target, send):
-        """A one-field sheet for a new note. NSAlert is the native minimum."""
-        alert = NSAlert.alloc().init()
-        alert.setMessageText_(title)
-        alert.setInformativeText_(body)
-        field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 320, 24))
-        alert.setAccessoryView_(field)
-        alert.addButtonWithTitle_(_("Add"))
-        alert.addButtonWithTitle_(_("Cancel"))
-        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-        alert.layout()
-        alert.window().setInitialFirstResponder_(field)
-        if alert.runModal() != 1000:            # 1000 is the first button
-            return
-        text = str(field.stringValue()).strip()
-        if not text:
-            return
-        task = store.add(text, target=target)
-        if task and send:
-            ok, msg = deliver(cfg, store, task)
-            notify("ccdo", msg, cfg)
-        app.refresh(force=True)
+    class CcdoTextView(NSTextView):
+        """The note field, with paste taught about images.
+
+        Everything else about it is a stock text view; only paste: is ours.
+        """
+
+        def paste_(self, sender):
+            try:
+                paths = images_from_pasteboard(NSPasteboard.generalPasteboard())
+            except Exception as e:
+                sys.stderr.write("[ccdo] could not save the pasted image: %s\n" % e)
+                paths = []
+            if not paths:
+                self.pasteAsPlainText_(sender)
+                return
+            text = image_insert_text(paths, self.ccdoAtLineStart())
+            self.insertText_replacementRange_(text, self.selectedRange())
+
+        def ccdoAtLineStart(self):
+            """Does the caret sit at the start of a line?"""
+            where = self.selectedRange().location
+            body = str(self.string())
+            return where <= 0 or where > len(body) or body[where - 1] == "\n"
+
+    def note_window(target, title):
+        """Open (or raise) a note window aimed at one session."""
+        for existing in _MAC_WINDOWS:
+            if existing.target == target:
+                existing.raise_()
+                return
+        NoteWindow(target, title).raise_()
+
+    class NoteWindow(object):
+        """A note as long as it needs to be, images included.
+
+        The menu can only ever be a list; writing happens here. Paste a
+        screenshot and its path lands in the text, which is what Claude Code
+        reads once the task is handed over.
+        """
+
+        W, H, PAD, ROW = 560, 380, 14, 32
+
+        def __init__(self, target, title):
+            self.target = target
+            self.tags = []
+            self.closed = False
+
+            self.choices = [(None, _("Inbox"))]
+            for sess in app.sessions:
+                if sess.get("live") and sess["target"] != INBOX:
+                    self.choices.append((sess["target"], sess["label"]))
+            if target is not None and target not in [t for t, __ in self.choices]:
+                self.choices.append((target, target))
+
+            self.win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+                NSMakeRect(0, 0, self.W, self.H), WINDOW_STYLE, BACKING, False)
+            self.win.setTitle_(title)
+            self.win.setReleasedWhenClosed_(False)
+            self.win.setDelegate_(dispatch)
+            self.win.center()
+            content = self.win.contentView()
+
+            body_h = self.H - self.PAD * 3 - self.ROW
+            body_w = self.W - self.PAD * 2
+            scroll = NSScrollView.alloc().initWithFrame_(
+                NSMakeRect(self.PAD, self.PAD * 2 + self.ROW, body_w, body_h))
+            scroll.setHasVerticalScroller_(True)
+            scroll.setBorderType_(BEZEL_BORDER)
+            scroll.setAutoresizingMask_(WIDTH_SIZABLE | HEIGHT_SIZABLE)
+
+            self.tv = CcdoTextView.alloc().initWithFrame_(
+                NSMakeRect(0, 0, body_w, body_h))
+            self.tv.setRichText_(False)
+            # Smart quotes and dashes would rewrite pasted code and paths.
+            self.tv.setAutomaticQuoteSubstitutionEnabled_(False)
+            self.tv.setAutomaticDashSubstitutionEnabled_(False)
+            self.tv.setAllowsUndo_(True)
+            self.tv.setFont_(NSFont.systemFontOfSize_(13.0))
+            self.tv.setMinSize_((0.0, 0.0))
+            self.tv.setMaxSize_((HUGE, HUGE))
+            self.tv.setVerticallyResizable_(True)
+            self.tv.setHorizontallyResizable_(False)
+            self.tv.setAutoresizingMask_(WIDTH_SIZABLE)
+            self.tv.textContainer().setContainerSize_((body_w, HUGE))
+            self.tv.textContainer().setWidthTracksTextView_(True)
+            scroll.setDocumentView_(self.tv)
+            content.addSubview_(scroll)
+
+            self.picker = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(self.PAD, self.PAD, 240, self.ROW - 4), False)
+            for __, label in self.choices:
+                self.picker.addItemWithTitle_(label)
+            self.picker.selectItemAtIndex_(
+                [t for t, __ in self.choices].index(target))
+            self.picker.setAutoresizingMask_(PIN_RIGHT | PIN_TOP)
+            content.addSubview_(self.picker)
+
+            self.button(_("Add"), self.W - self.PAD - 220, 100,
+                        lambda: self.submit(False))
+            # Command+Return sends: Return alone belongs to the text.
+            self.button(_("Add and send"), self.W - self.PAD - 110, 110,
+                        lambda: self.submit(True), "\r", CMD_KEY)
+
+        def button(self, title, x, width, fn, key="", mask=0):
+            b = NSButton.alloc().initWithFrame_(
+                NSMakeRect(x, self.PAD - 2, width, self.ROW))
+            b.setTitle_(title)
+            b.setBezelStyle_(ROUNDED)
+            tag = mac_action(fn)
+            self.tags.append(tag)
+            b.setTag_(tag)
+            b.setTarget_(dispatch)
+            b.setAction_(SELECTOR)
+            if key:
+                b.setKeyEquivalent_(key)
+                b.setKeyEquivalentModifierMask_(mask)
+            b.setAutoresizingMask_(PIN_LEFT | PIN_TOP)
+            self.win.contentView().addSubview_(b)
+            return b
+
+        def raise_(self):
+            if self not in _MAC_WINDOWS:
+                _MAC_WINDOWS.append(self)
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            self.win.makeKeyAndOrderFront_(None)
+            self.win.makeFirstResponder_(self.tv)
+
+        def submit(self, send):
+            text = str(self.tv.string()).strip()
+            if not text:
+                return
+            target = self.choices[self.picker.indexOfSelectedItem()][0]
+            task = store.add(text, target=target)
+            if task and send and target:
+                ok, msg = deliver(cfg, store, task)
+                notify("ccdo", msg, cfg)
+            self.dismiss()
+            self.win.close()
+            app.refresh(force=True)
+
+        def dismiss(self):
+            """Give the tags back. Closing can arrive twice — by button and by
+            the window delegate — so this has to be harmless the second time.
+            """
+            if self.closed:
+                return
+            self.closed = True
+            for tag in self.tags:
+                _MAC_ACTIONS.pop(tag, None)
+            if self in _MAC_WINDOWS:
+                _MAC_WINDOWS.remove(self)
 
     class MenuBarApp(object):
         def __init__(self):
             self.sessions = []
             self.signature = None
+            self.tags = []
             bar = NSStatusBar.systemStatusBar()
             self.item = bar.statusItemWithLength_(NSVariableStatusItemLength)
             icon = NSImage.alloc().initWithContentsOfFile_(write_icons(True))
@@ -2798,8 +3003,8 @@ def start_mac_gui():
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
                 title, SELECTOR if fn else None, "")
             if fn:
-                tag = len(_MAC_ACTIONS) + 1
-                _MAC_ACTIONS[tag] = fn
+                tag = mac_action(fn)
+                self.tags.append(tag)
                 item.setTag_(tag)
                 item.setTarget_(dispatch)
             item.setEnabled_(bool(enabled and fn))
@@ -2810,7 +3015,11 @@ def start_mac_gui():
             menu.addItem_(NSMenuItem.separatorItem())
 
         def build(self):
-            _MAC_ACTIONS.clear()
+            # Only the menu's own actions go: an open note window keeps its
+            # buttons working across a rebuild.
+            for tag in self.tags:
+                _MAC_ACTIONS.pop(tag, None)
+            self.tags = []
             self.menu.removeAllItems()
 
             latest = read_update_cache().get("latest", "")
@@ -2820,8 +3029,7 @@ def start_mac_gui():
                 self.separator(self.menu)
 
             self.add(self.menu, _("Quick note…"),
-                     lambda: ask(_("Quick note"), _("Goes to the inbox."),
-                                 None, False))
+                     lambda: note_window(None, _("Quick note")))
             self.separator(self.menu)
 
             shown = 0
@@ -2842,7 +3050,7 @@ def start_mac_gui():
                     target = sess["target"]
                     self.add(sub, _("Note for this session…"),
                              lambda t=target, name=sess["label"]:
-                             ask(_("Note"), name, t, False))
+                             note_window(t, name))
                     self.add(sub, _("Send next task"),
                              lambda t=target: self.send_next(t), bool(tasks))
                     self.separator(sub)
