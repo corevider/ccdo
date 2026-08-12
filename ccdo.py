@@ -2687,6 +2687,11 @@ def start_gui(use_statusicon=False):
             % e)
         return 1
 
+    # Without these the app introduces itself by its interpreter: the macOS
+    # menu bar and the Dock both showed "python".
+    GLib.set_prgname(APP_NAME)
+    GLib.set_application_name(APP_NAME)
+
     Indicator = None
     if not use_statusicon:
         for ns in ("AyatanaAppIndicator3", "AppIndicator3"):
@@ -3852,7 +3857,8 @@ def start_gui(use_statusicon=False):
             add_headerbar(self, _("ccdo — quick note"))
             self.app = app
             self.set_default_size(420, 190)
-            self.set_keep_above(True)
+            if not IS_MAC:                      # see NoteWindow: the menu bar
+                self.set_keep_above(True)
             self.set_position(Gtk.WindowPosition.MOUSE)
             self.get_style_context().add_class("jd-window")
             mark_body(self)
@@ -3934,8 +3940,10 @@ def start_gui(use_statusicon=False):
             self.set_default_size(560, 660)
             self.set_skip_taskbar_hint(True)
             # keep_above + UTILITY starts a focus fight on some window
-            # managers; let the config turn either off.
-            if cfg.get("window_keep_above", True):
+            # managers; let the config turn either off. On macOS it also
+            # floats over the auto-hiding menu bar and keeps it from settling,
+            # so it is off there whatever the setting says.
+            if cfg.get("window_keep_above", True) and not IS_MAC:
                 self.set_keep_above(True)
             if cfg.get("window_utility_hint", False):
                 self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
