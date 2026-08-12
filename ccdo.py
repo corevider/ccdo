@@ -4605,10 +4605,11 @@ def start_gui(use_statusicon=False):
             dlg.destroy()
 
         def start_update_check(self):
-            """Yeni surum var mi diye arka planda bak.
+            """Look for a new release in the background.
 
-            Ayri bir is parcaciginda: ag gecikmesi arayuzu dondurmemeli.
-            Sonuc onbellege yaziliyor, menu bir sonraki kurulusta gosteriyor.
+            On its own thread: network latency must not freeze the interface.
+            The result is cached, and the menu shows it the next time it is
+            built.
             """
             if not cfg.get("check_updates", True):
                 return
