@@ -3298,7 +3298,8 @@ def start_gui(use_statusicon=False):
             ]
             for label, cb in items:
                 mi = Gtk.MenuItem.new_with_label(label)
-                mi.connect("activate", lambda _w, f=cb: f())
+                mi.connect("activate",
+                           lambda _w, f=cb: GLib.idle_add(self.app._once(f)))
                 menu.append(mi)
             menu.show_all()
             menu.popup_at_widget(btn, Gdk.Gravity.SOUTH_EAST,
@@ -4337,7 +4338,7 @@ def start_gui(use_statusicon=False):
             task = next((t for t in store.all() if t["id"] == task_id), None)
             if not task:
                 return
-            dlg = EditDialog(self.win, self, task)
+            dlg = EditDialog(self.parent_window(), self, task)
             if dlg.run() == Gtk.ResponseType.OK:
                 res = dlg.result()
                 if res["text"]:
@@ -4377,7 +4378,8 @@ def start_gui(use_statusicon=False):
             """
             cache = read_update_cache()
             latest = cache.get("latest", "")
-            dlg = Gtk.Dialog(title=_("Update"), transient_for=self.win, modal=True)
+            dlg = Gtk.Dialog(title=_("Update"), transient_for=self.parent_window(),
+                             modal=True)
             add_headerbar(dlg, _("Update"))
             dlg.get_style_context().add_class("jd-window")
             dlg.set_default_size(520, 460)
@@ -4475,8 +4477,16 @@ def start_gui(use_statusicon=False):
                 Gtk.main_quit()
             return False
 
+        def parent_window(self):
+            """The window to hang a dialog on, or None while it is hidden.
+
+            A modal dialog transient for a window nobody can see leaves the
+            user with no way back to it.
+            """
+            return self.win if self.win.get_visible() else None
+
         def open_settings(self):
-            dlg = SettingsDialog(self.win, cfg)
+            dlg = SettingsDialog(self.parent_window(), cfg)
             if dlg.run() == Gtk.ResponseType.OK:
                 merged = dict(cfg)
                 merged.update(dlg.values())
@@ -4595,7 +4605,14 @@ def start_gui(use_statusicon=False):
             def item(label, cb=None, sensitive=True, menu=None):
                 mi = Gtk.MenuItem.new_with_label(label)
                 if cb:
-                    mi.connect("activate", lambda *_: cb())
+                    # Run it after the menu has closed. A Gtk.Menu holds a
+                    # pointer and keyboard grab while it is up; opening a
+                    # modal dialog from inside the callback leaves that grab
+                    # in place, and the window stops taking clicks and cannot
+                    # be dragged. It only shows where GTK draws the menu
+                    # itself — on Linux the shell draws it over DBus.
+                    mi.connect("activate",
+                               lambda *_, f=cb: GLib.idle_add(self._once(f)))
                 mi.set_sensitive(sensitive)
                 (menu or self.menu).append(mi)
                 return mi
