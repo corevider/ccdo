@@ -155,21 +155,31 @@ claude-tmux                 # opens a tmux session named cc-<dir>
 alias claude=claude-tmux    # for muscle memory
 ```
 
-It also turns the mouse on for the session it creates and gives the pane 50000
-lines of history. Outside tmux the wheel scrolls the terminal's own scrollback;
-inside, tmux draws the screen and owns the history, so that buffer is empty and
-the wheel does nothing. With the mouse on, the wheel enters copy-mode and
-scrolls the pane instead. Claude Code does not ask for mouse tracking itself,
-so tmux keeps the events rather than forwarding them. `CCDO_TMUX_MOUSE=0` and
-`CCDO_TMUX_HISTORY=<n>` override both.
+It gives the pane 50000 lines of history and, by default, stops tmux from
+switching to the alternate screen. That last part is what keeps the terminal
+feeling like a terminal: Claude Code's output lands in the terminal's own
+scrollback, so the wheel scrolls and text selection works exactly as it does
+without tmux — no Shift, no copy-mode. The status bar is turned off, because a
+full redraw (attaching, resizing the window) can leave a screenful behind in
+the scrollback and that is one line less of it.
 
-Turning the mouse on has a price: a drag then belongs to tmux rather than to
-the terminal, and tmux copies into a buffer of its own, so selected text never
-reaches the system clipboard. `claude-tmux` therefore binds a mouse selection
-to `copy-pipe-and-cancel` through `pbcopy`, `wl-copy`, `xclip` or `xsel` —
-whichever is installed — and selecting a line of Claude Code's output puts it
-on the clipboard as before. To select with the terminal instead, hold Shift
-(iTerm2 uses Option, Terminal.app uses Fn).
+`CCDO_TMUX_SCROLL` chooses between three:
+
+| value | wheel | selection |
+|---|---|---|
+| `native` (default) | the terminal's scrollback | the terminal's own |
+| `tmux` | enters copy-mode, scrolls the pane | tmux's, piped to the system clipboard; the terminal's needs Shift |
+| `off` | nothing | the terminal's own |
+
+In `tmux` mode a drag belongs to tmux, which copies into a buffer of its own,
+so a mouse selection is bound to `copy-pipe-and-cancel` through `pbcopy`,
+`wl-copy`, `xclip` or `xsel` — whichever is installed. To select with the
+terminal there, hold Shift (iTerm2 uses Option, Terminal.app uses Fn).
+
+`terminal-overrides` is a tmux server option, so the native mode reaches every
+session on that tmux server, not only the ones ccdo opens. `CCDO_TMUX_MOUSE=1`
+still selects the `tmux` mode and `=0` the `off` mode, and
+`CCDO_TMUX_HISTORY=<n>` sets the scrollback.
 
 `history-limit` only applies to a pane at the moment it is created, so the
 session starts on a throwaway shell, takes the options, and the real pane is

@@ -68,7 +68,18 @@ case "$1" in
     [ "$3" = "=cc-proje" ] && exit 0
     exit 1 ;;
   new-session)   echo "NEW-SESSION args=$*" ;;
-  set-option)    echo "SET $4=$5" ;;
+  set-option)
+    # Flags vary (-t name, -sa, -ga), so reduce the call to key=value.
+    shift
+    rest=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -t|-T) shift 2 ;;
+        -*)    shift ;;
+        *)     rest+=("$1"); shift ;;
+      esac
+    done
+    echo "SET ${rest[0]}=${rest[1]:-}" ;;
   split-window)  echo "SPLIT target=$4 cmd=$5" ;;
   kill-pane)     echo "KILL $3" ;;
   bind-key)      echo "BIND table=$3 key=$4 action=$7 cmd=[$8]" ;;
@@ -108,15 +119,28 @@ def first(prefix):
 r.check(first("SET history-limit") >= 0 and first("SPLIT") >= 0
         and first("SET history-limit") < first("SPLIT"),
         "history-limit is set before the pane is created", out)
-r.check(any(l.startswith("SET mouse=on") for l in lines),
-        "the mouse is turned on, so the wheel scrolls the pane", out)
+r.check(any(l.startswith("SET terminal-overrides=") and "smcup@" in l
+            for l in lines),
+        "the alternate screen is off, so the terminal keeps its own scrollback",
+        out)
+r.check(any(l.startswith("SET status=off") for l in lines),
+        "and the status bar goes, since a full redraw would repeat it", out)
+r.check(not any(l.startswith("SET mouse=on") for l in lines),
+        "the mouse stays with the terminal — selecting must not need Shift", out)
 r.check(first("SPLIT") < first("KILL"),
         "the throwaway shell is killed only after the real pane exists", out)
 
-# With the mouse on, a drag is tmux's selection and lands in a tmux buffer, so
-# selected text stopped reaching the system clipboard. Copying a line out of
-# Claude Code has to keep working.
-binds = [l for l in lines if l.startswith("BIND")]
+# In tmux's own mouse mode a drag is a tmux selection and lands in a tmux
+# buffer, so selected text would never reach the system clipboard.
+out_tmux = subprocess.run([WRAP], cwd=proje,
+                          env=dict(env, CCDO_TMUX_SCROLL="tmux"),
+                          capture_output=True, text=True).stdout
+tmux_lines = out_tmux.splitlines()
+r.check(any(l.startswith("SET mouse=on") for l in tmux_lines),
+        "CCDO_TMUX_SCROLL=tmux hands the mouse to tmux", out_tmux.strip())
+r.check("smcup@" not in out_tmux,
+        "and leaves the alternate screen alone", out_tmux.strip())
+binds = [l for l in tmux_lines if l.startswith("BIND")]
 r.check(len(binds) == 2 and all("MouseDragEnd1Pane" in l for l in binds),
         "a mouse selection is bound in both copy-mode tables", str(binds))
 r.check(all("action=copy-pipe-and-cancel" in l for l in binds),
@@ -124,12 +148,20 @@ r.check(all("action=copy-pipe-and-cancel" in l for l in binds),
 r.check(all("cmd=[pbcopy]" in l for l in binds),
         "the clipboard command reaches tmux as one argument", str(binds))
 
-# Opting out has to be honoured, since it changes how selection behaves.
-out_nomouse = subprocess.run([WRAP], cwd=proje, env=dict(env, CCDO_TMUX_MOUSE="0"),
+# The switch that existed before there were modes still has to work.
+out_legacy = subprocess.run([WRAP], cwd=proje, env=dict(env, CCDO_TMUX_MOUSE="1"),
+                            capture_output=True, text=True).stdout
+r.check("SET mouse=on" in out_legacy,
+        "CCDO_TMUX_MOUSE=1 still means the tmux mouse", out_legacy.strip())
+
+# Opting out has to be honoured: plain tmux, nothing touched.
+for name, extra in (("CCDO_TMUX_MOUSE=0", {"CCDO_TMUX_MOUSE": "0"}),
+                    ("CCDO_TMUX_SCROLL=off", {"CCDO_TMUX_SCROLL": "off"})):
+    out_off = subprocess.run([WRAP], cwd=proje, env=dict(env, **extra),
                              capture_output=True, text=True).stdout
-r.check("SET mouse=on" not in out_nomouse and "BIND" not in out_nomouse,
-        "CCDO_TMUX_MOUSE=0 leaves the mouse and the bindings alone",
-        out_nomouse.strip())
+    r.check("SET mouse=on" not in out_off and "BIND" not in out_off
+            and "smcup@" not in out_off,
+            "%s leaves tmux as it found it" % name, out_off.strip())
 
 # Inside tmux it must not nest: claude has to run directly.
 env2 = dict(env, TMUX="/tmp/tmux-1000/default,123,0")

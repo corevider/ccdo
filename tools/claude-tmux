@@ -57,25 +57,48 @@ done
 # arguments with spaces do not get split.
 cmd="$(printf '%q ' "$CLAUDE" "$@")"
 
-# Outside tmux the wheel scrolls the terminal's own scrollback. Inside, tmux
-# draws the screen and owns the history, so that buffer is empty and the wheel
-# does nothing. With mouse on, the wheel enters copy-mode and scrolls the pane
-# instead — the closest thing to the behaviour you get without tmux. Claude
-# Code does not ask for mouse tracking itself, so tmux keeps the events rather
-# than forwarding them to the app.
+# How the wheel and the mouse behave, chosen by CCDO_TMUX_SCROLL:
+#
+#   native (default)  tmux stops switching to the alternate screen, so Claude
+#                     Code's output lands in the terminal's own scrollback. The
+#                     wheel and text selection are the terminal's own again —
+#                     no Shift, no copy-mode, the same as running claude
+#                     without tmux. The cost is that a full redraw (attaching,
+#                     resizing the window) can leave a screenful behind in the
+#                     scrollback; the status bar is turned off, which is one
+#                     line less of it, and one pane per session keeps redraws
+#                     rare.
+#   tmux              tmux keeps the mouse: the wheel enters copy-mode and
+#                     scrolls the pane, and a drag is a tmux selection, which
+#                     we pipe to the system clipboard. Selecting with the
+#                     terminal then needs Shift held down.
+#   off               neither — plain tmux.
+#
+# terminal-overrides is a server option, so the native mode reaches every
+# session on this tmux server, not just ours.
 #
 # history-limit only applies to a pane at the moment it is created: setting it
 # afterwards leaves the running pane on the old value. So the session starts on
 # a throwaway shell, takes the options, and the real pane is split off after.
+mode="${CCDO_TMUX_SCROLL:-native}"
+case "${CCDO_TMUX_MOUSE:-}" in       # the older switch, before this had modes
+  1) mode="tmux" ;;
+  0) mode="off" ;;
+esac
+
 if tmux new-session -d -s "$name" 2>/dev/null; then
   tmux set-option -t "$name" history-limit "${CCDO_TMUX_HISTORY:-50000}" 2>/dev/null
-  if [ "${CCDO_TMUX_MOUSE:-1}" = "1" ]; then
+  if [ "$mode" = "native" ]; then
+    tmux set-option -sa terminal-overrides ',*:smcup@:rmcup@' 2>/dev/null ||
+      tmux set-option -ga terminal-overrides ',*:smcup@:rmcup@' 2>/dev/null || true
+    tmux set-option -t "$name" status off 2>/dev/null || true
+  fi
+  if [ "$mode" = "tmux" ]; then
     tmux set-option -t "$name" mouse on 2>/dev/null
     # With the mouse on, a drag belongs to tmux, not to the terminal, and tmux
-    # copies into a buffer of its own — so selecting text stopped putting it on
-    # the system clipboard. Pipe it there as well, or copying a line out of
-    # Claude Code no longer works. (To select with the terminal instead, hold
-    # Shift; iTerm2 uses Option and Terminal.app uses Fn.)
+    # copies into a buffer of its own — so selected text never reaches the
+    # system clipboard. Pipe it there as well, or copying a line out of Claude
+    # Code no longer works.
     copy=""
     for candidate in "pbcopy" "wl-copy" "xclip -selection clipboard" \
                      "xsel --clipboard --input"; do
