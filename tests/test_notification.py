@@ -28,7 +28,7 @@ reg.upsert(SID, state="asking")
 r.check(notify("permission", "Claude needs your permission to use Bash") == "asking",
         "asking + izin bildirimi", "kilit korunuyor")
 
-# Kilit yokken bildirim normal calismali
+# With no lock held, the notification goes out as usual.
 reg.upsert(SID, state="busy")
 r.check(notify("permission", "Claude needs your permission to use Bash") == "waiting",
         "busy + izin bildirimi", "waiting olmali")
