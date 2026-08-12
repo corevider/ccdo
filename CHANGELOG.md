@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.13] - 2026-08-12
+
+### Fixed
+
+- **tmux:** make the wheel scroll in the session claude-tmux opens (69a0e23)
 ## [1.0.12] - 2026-08-12
 
 ### Fixed
