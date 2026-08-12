@@ -10,6 +10,7 @@ logic runs, against the real core.
 What this does not check is whether Cocoa likes what we hand it. Only a Mac
 can say that.
 """
+import os
 import sys
 import types
 
@@ -96,6 +97,155 @@ class Alloc:
         return init
 
 
+class Widget(object):
+    """A view that shrugs at every setter but answers real calls itself.
+
+    Only set*_ is waved through: a typo in anything we actually read — string,
+    textContainer, indexOfSelectedItem — should still be an AttributeError.
+    """
+
+    @classmethod
+    def alloc(cls):
+        return cls()
+
+    def initWithFrame_(self, frame):
+        self.frame = frame
+        return self
+
+    def __getattr__(self, name):
+        if name.startswith("set"):
+            return lambda *a, **kw: None
+        raise AttributeError(name)
+
+
+class TextView(Widget):
+    def initWithFrame_(self, frame):
+        Widget.initWithFrame_(self, frame)
+        self.text, self.caret, self.plain_pastes = "", 0, 0
+        return self
+
+    def string(self):
+        return self.text
+
+    def selectedRange(self):
+        return types.SimpleNamespace(location=self.caret)
+
+    def insertText_replacementRange_(self, text, rng):
+        self.text += text
+        self.caret = len(self.text)
+
+    def pasteAsPlainText_(self, sender):
+        self.plain_pastes += 1
+
+    def textContainer(self):
+        return Widget()
+
+    def type(self, text):
+        self.text += text
+        self.caret = len(self.text)
+
+
+class ScrollView(Widget):
+    def setDocumentView_(self, view):
+        self.document = view
+
+
+class PopUp(Widget):
+    def initWithFrame_pullsDown_(self, frame, pulls_down):
+        self.titles, self.index = [], 0
+        return self
+
+    def addItemWithTitle_(self, title):
+        self.titles.append(title)
+
+    def selectItemAtIndex_(self, i):
+        self.index = i
+
+    def indexOfSelectedItem(self):
+        return self.index
+
+
+class PushButton(Widget):
+    def initWithFrame_(self, frame):
+        Widget.initWithFrame_(self, frame)
+        self.title, self.tag_value, self.key, self.mask = "", 0, "", 0
+        return self
+
+    def setTitle_(self, t):
+        self.title = t
+
+    def setTag_(self, tag):
+        self.tag_value = tag
+
+    def setKeyEquivalent_(self, key):
+        self.key = key
+
+    def setKeyEquivalentModifierMask_(self, mask):
+        self.mask = mask
+
+    def tag(self):
+        return self.tag_value
+
+
+class Window(Widget):
+    def initWithContentRect_styleMask_backing_defer_(self, rect, style, backing, defer):
+        self.rect, self.style = rect, style
+        self.views, self.title, self.delegate = [], "", None
+        self.visible, self.first_responder = False, None
+        return self
+
+    def contentView(self):
+        return self
+
+    def addSubview_(self, view):
+        self.views.append(view)
+
+    def center(self):
+        pass
+
+    def setTitle_(self, title):
+        self.title = title
+
+    def setDelegate_(self, delegate):
+        self.delegate = delegate
+
+    def makeKeyAndOrderFront_(self, sender):
+        self.visible = True
+
+    def makeFirstResponder_(self, view):
+        self.first_responder = view
+
+    def close(self):
+        self.visible = False
+        if self.delegate is not None:
+            self.delegate.windowWillClose_(
+                types.SimpleNamespace(object=lambda: self))
+
+
+class Data(object):
+    def __init__(self, blob):
+        self.blob = blob
+
+    def writeToFile_atomically_(self, path, atomically):
+        with open(path, "wb") as fh:
+            fh.write(self.blob)
+        return True
+
+
+class Pasteboard(object):
+    """A clipboard holding whatever a test puts on it."""
+
+    def __init__(self, png=None, tiff=None, files=()):
+        self.png, self.tiff, self.files = png, tiff, list(files)
+
+    def readObjectsForClasses_options_(self, classes, options):
+        return [types.SimpleNamespace(path=lambda p=f: p) for f in self.files]
+
+    def dataForType_(self, kind):
+        blob = {"png": self.png, "tiff": self.tiff}.get(kind)
+        return Data(blob) if blob else None
+
+
 def install_stubs(state):
     objc = types.ModuleType("objc")
     objc.selector = lambda fn, signature=None: fn
@@ -145,10 +295,26 @@ def install_stubs(state):
         alloc=lambda: Alloc(lambda *a: types.SimpleNamespace(
             setSize_=lambda s: None, setTemplate_=lambda f: state.__setitem__("template", f))))
     appkit.NSAlert = types.SimpleNamespace(alloc=lambda: Alloc(lambda *a: None))
-    appkit.NSTextField = types.SimpleNamespace(alloc=lambda: Alloc(lambda *a: None))
     appkit.NSWorkspace = types.SimpleNamespace(sharedWorkspace=lambda: None)
     appkit.NSVariableStatusItemLength = -1
     appkit.NSApplicationActivationPolicyAccessory = 1
+
+    appkit.NSWindow = Window
+    appkit.NSTextView = TextView
+    appkit.NSScrollView = ScrollView
+    appkit.NSPopUpButton = PopUp
+    appkit.NSButton = PushButton
+    appkit.NSFont = types.SimpleNamespace(systemFontOfSize_=lambda size: None)
+    appkit.NSPasteboard = types.SimpleNamespace(
+        generalPasteboard=lambda: state.get("pasteboard"))
+    appkit.NSPasteboardTypePNG = "png"
+    appkit.NSPasteboardTypeTIFF = "tiff"
+    appkit.NSBitmapImageRep = types.SimpleNamespace(
+        imageRepWithData_=lambda data: types.SimpleNamespace(
+            representationUsingType_properties_=lambda kind, props:
+            Data(b"png-from-tiff") if kind == jd.PNG_FILE_TYPE else None))
+    # The AppKit constants are read with getattr and a fallback, so leaving
+    # them out here exercises that path.
 
     for name, mod in (("objc", objc), ("Foundation", foundation), ("AppKit", appkit)):
         sys.modules[name] = mod
@@ -156,13 +322,14 @@ def install_stubs(state):
 
 
 def run_app():
+    """Start the app and leave the stubs in place.
+
+    The window code imports AppKit again when an image is pasted, so the fakes
+    have to outlive the call. They are removed at the end of the file.
+    """
     state = install_stubs({})
-    try:
-        ok = jd.start_mac_gui()
-    finally:
-        for name in ("objc", "Foundation", "AppKit"):
-            sys.modules.pop(name, None)
-    return ok, state
+    jd._MAC_WINDOWS[:] = []
+    return jd.start_mac_gui(), state
 
 
 # ------------------------------------------------------------------ empty
@@ -255,8 +422,105 @@ done = next(i for i in walk(state["status"].menu) if i.title == "Done")
 jd._MAC_ACTIONS[done.tag()]()
 r.check(len(store.pending("%9")) == 1, "Done really takes the task out of the queue")
 
+
+# ------------------------------------------------------------- note window
+
+def open_quick_note():
+    item = next(i for i in state["status"].menu.items if "Quick note" in i.title)
+    jd._MAC_ACTIONS[item.tag()]()
+    return jd._MAC_WINDOWS[-1]
+
+
+win = open_quick_note()
+r.check(len(jd._MAC_WINDOWS) == 1, "the quick note item opens a window")
+r.check(win.picker.titles[0] == "Inbox" and "api-server" in win.picker.titles,
+        "the picker offers the inbox and every live session",
+        str(win.picker.titles))
+r.check(win.picker.index == 0, "a quick note starts on the inbox")
+
+buttons = [v for v in win.win.views if isinstance(v, PushButton)]
+r.check(len(buttons) == 2, "add, and add and send", str([b.title for b in buttons]))
+send = next(b for b in buttons if "send" in b.title)
+r.check(send.key == "\r" and send.mask,
+        "send is Command+Return — Return alone belongs to the text")
+
+r.check(open_quick_note() is win and len(jd._MAC_WINDOWS) == 1,
+        "asking again raises the open window instead of a second one")
+
+# A rebuild used to clear every action, which left the buttons of an open
+# window pointing at nothing.
+tag = buttons[0].tag()
+scan = next(i for i in state["status"].menu.items if i.title == "Scan sessions")
+jd._MAC_ACTIONS[scan.tag()]()
+r.check(tag in jd._MAC_ACTIONS, "the window's buttons survive a menu rebuild")
+
+win.tv.type("Two lines\nof note")
+win.submit(False)
+queued = [t for t in store.all() if t["status"] == "pending"]
+r.check(any(t["text"] == "Two lines\nof note" and t["target"] is None
+            for t in queued), "the note is queued, newlines and all",
+        str([t["text"] for t in queued]))
+r.check(not jd._MAC_WINDOWS and tag not in jd._MAC_ACTIONS,
+        "submitting closes the window and gives its tags back")
+
+session_item = next(i for i in state["status"].menu.items
+                    if i.title.startswith("api-server"))
+note_item = next(i for i in session_item.submenu.items if "Note for" in i.title)
+jd._MAC_ACTIONS[note_item.tag()]()
+win = jd._MAC_WINDOWS[-1]
+r.check(win.picker.titles[win.picker.index] == "api-server",
+        "a session note opens with that session picked")
+win.win.close()
+r.check(not jd._MAC_WINDOWS, "closing the window unregisters it")
+
+
+# ------------------------------------------------------------- image paste
+
+win = open_quick_note()
+
+state["pasteboard"] = Pasteboard(png=b"screenshot-bytes")
+win.tv.type("look at this")
+win.tv.paste_(None)
+saved = win.tv.text.split("\n")[1]
+r.check(win.tv.text.startswith("look at this\n"),
+        "a path pasted mid-line starts on a line of its own", repr(win.tv.text))
+r.check(os.path.isfile(saved) and open(saved, "rb").read() == b"screenshot-bytes",
+        "the pixels are written next to the queue", saved)
+r.check(saved.startswith(jd.IMAGES_DIR), "and land in the images folder", saved)
+
+state["pasteboard"] = Pasteboard(tiff=b"tiff-bytes")
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+converted = win.tv.text.strip()
+r.check(os.path.isfile(converted)
+        and open(converted, "rb").read() == b"png-from-tiff",
+        "TIFF — what a screenshot usually is — is converted to PNG", converted)
+
+existing = os.path.join(jd.IMAGES_DIR, "already-on-disk.png")
+open(existing, "wb").write(b"x")
+state["pasteboard"] = Pasteboard(png=b"ignored", files=[existing, "/tmp/not.txt"])
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+r.check(win.tv.text.strip() == existing,
+        "a copied image file keeps its own path instead of being copied again",
+        repr(win.tv.text))
+
+state["pasteboard"] = Pasteboard()
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+r.check(win.tv.plain_pastes == 1 and not win.tv.text,
+        "plain text still pastes as text")
+
+r.check(jd.image_insert_text(["/a.png"], True) == "/a.png\n",
+        "at the start of a line the path needs no leading newline")
+r.check(jd.image_insert_text(["/a.png", "/b.png"], False) == "\n/a.png\n/b.png\n",
+        "mid-line it gets one, and several images take a line each")
+
+win.win.close()
 for t in store.all():
     store.delete(t["id"])
 reg.drop("mac-test")
+for name in ("objc", "Foundation", "AppKit"):
+    sys.modules.pop(name, None)
 
 raise SystemExit(r.finish())
