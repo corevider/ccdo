@@ -163,6 +163,14 @@ scrolls the pane instead. Claude Code does not ask for mouse tracking itself,
 so tmux keeps the events rather than forwarding them. `CCDO_TMUX_MOUSE=0` and
 `CCDO_TMUX_HISTORY=<n>` override both.
 
+Turning the mouse on has a price: a drag then belongs to tmux rather than to
+the terminal, and tmux copies into a buffer of its own, so selected text never
+reaches the system clipboard. `claude-tmux` therefore binds a mouse selection
+to `copy-pipe-and-cancel` through `pbcopy`, `wl-copy`, `xclip` or `xsel` —
+whichever is installed — and selecting a line of Claude Code's output puts it
+on the clipboard as before. To select with the terminal instead, hold Shift
+(iTerm2 uses Option, Terminal.app uses Fn).
+
 `history-limit` only applies to a pane at the moment it is created, so the
 session starts on a throwaway shell, takes the options, and the real pane is
 split off after — setting it afterwards leaves the running pane on the old

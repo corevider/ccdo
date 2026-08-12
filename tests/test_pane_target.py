@@ -71,11 +71,18 @@ case "$1" in
   set-option)    echo "SET $4=$5" ;;
   split-window)  echo "SPLIT target=$4 cmd=$5" ;;
   kill-pane)     echo "KILL $3" ;;
+  bind-key)      echo "BIND table=$3 key=$4 action=$7 cmd=[$8]" ;;
   attach-session) echo "ATTACH $3" ;;
 esac
 exit 0
 """)
 os.chmod(os.path.join(stub, "tmux"), 0o755)
+
+# A clipboard tool the wrapper will find first, so the test does not depend on
+# what happens to be installed here.
+with open(os.path.join(stub, "pbcopy"), "w") as f:
+    f.write("#!/usr/bin/env bash\ncat >/dev/null\n")
+os.chmod(os.path.join(stub, "pbcopy"), 0o755)
 
 with open(os.path.join(stub, "claude"), "w") as f:
     f.write("#!/usr/bin/env bash\necho STUB-CLAUDE \"$@\"\n")
@@ -106,13 +113,25 @@ r.check(any(l.startswith("SET mouse=on") for l in lines),
 r.check(first("SPLIT") < first("KILL"),
         "the throwaway shell is killed only after the real pane exists", out)
 
+# With the mouse on, a drag is tmux's selection and lands in a tmux buffer, so
+# selected text stopped reaching the system clipboard. Copying a line out of
+# Claude Code has to keep working.
+binds = [l for l in lines if l.startswith("BIND")]
+r.check(len(binds) == 2 and all("MouseDragEnd1Pane" in l for l in binds),
+        "a mouse selection is bound in both copy-mode tables", str(binds))
+r.check(all("action=copy-pipe-and-cancel" in l for l in binds),
+        "and it pipes, rather than only filling a tmux buffer", str(binds))
+r.check(all("cmd=[pbcopy]" in l for l in binds),
+        "the clipboard command reaches tmux as one argument", str(binds))
+
 # Opting out has to be honoured, since it changes how selection behaves.
 out_nomouse = subprocess.run([WRAP], cwd=proje, env=dict(env, CCDO_TMUX_MOUSE="0"),
                              capture_output=True, text=True).stdout
-r.check("SET mouse=on" not in out_nomouse,
-        "CCDO_TMUX_MOUSE=0 leaves the mouse alone", out_nomouse.strip())
+r.check("SET mouse=on" not in out_nomouse and "BIND" not in out_nomouse,
+        "CCDO_TMUX_MOUSE=0 leaves the mouse and the bindings alone",
+        out_nomouse.strip())
 
-# tmux icindeyken ic ice sokmamali: dogrudan claude calismali
+# Inside tmux it must not nest: claude has to run directly.
 env2 = dict(env, TMUX="/tmp/tmux-1000/default,123,0")
 out2 = subprocess.run([WRAP], cwd=proje, env=env2,
                       capture_output=True, text=True).stdout.strip()
@@ -121,7 +140,7 @@ r.check(out2.startswith("STUB-CLAUDE"), "already inside tmux, it does not nest",
 # Non-interactive calls must not open tmux
 for args, label in ((["-p", "merhaba"], "-p (print)"),
                     (["--version"], "--version"),
-                    (["mcp", "list"], "mcp alt komutu")):
+                    (["mcp", "list"], "the mcp subcommand")):
     out3 = subprocess.run([WRAP] + args, cwd=proje, env=env,
                           capture_output=True, text=True).stdout.strip()
     r.check(out3.startswith("STUB-CLAUDE"), "does not open tmux: %s" % label, out3)

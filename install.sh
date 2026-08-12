@@ -89,16 +89,16 @@ elif [ "$OS" = "mac" ]; then
 elif command -v apt >/dev/null 2>&1; then
   sudo apt update
   sudo apt install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
-       gir1.2-ayatanaappindicator3-0.1 libnotify-bin tmux xdotool xclip
+       gir1.2-ayatanaappindicator3-0.1 libnotify-bin tmux xdotool xclip wl-clipboard
 elif command -v dnf >/dev/null 2>&1; then
   sudo dnf install -y python3-gobject gtk3 libappindicator-gtk3 \
-       libnotify tmux xdotool xclip
+       libnotify tmux xdotool xclip wl-clipboard
 elif command -v pacman >/dev/null 2>&1; then
   sudo pacman -S --needed --noconfirm python-gobject gtk3 \
-       libayatana-appindicator libnotify tmux xdotool xclip
+       libayatana-appindicator libnotify tmux xdotool xclip wl-clipboard
 elif command -v zypper >/dev/null 2>&1; then
   sudo zypper install -y python3-gobject python3-gobject-Gdk \
-       libayatana-appindicator3-1 libnotify-tools tmux xdotool xclip
+       libayatana-appindicator3-1 libnotify-tools tmux xdotool xclip wl-clipboard
 else
   echo "!! Unknown package manager. Install these by hand:"
   echo "   python3-gobject (PyGObject), GTK 3, an AppIndicator library,"
