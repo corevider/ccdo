@@ -9,6 +9,12 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.15] - 2026-08-12
+
+### Fixed
+
+- **install:** pick a macOS interpreter that carries PyObjC (825ffd5)
+- **macos:** make the menu bar app start and survive Cocoa (e5b4ac4)
 ## [1.0.14] - 2026-08-12
 
 ### Added
