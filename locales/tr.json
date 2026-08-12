@@ -164,6 +164,9 @@
   "and history stay put. Then: systemctl --user restart ccdo": "geçmişin durur. Sonra: systemctl --user restart ccdo",
 
   "Quick note…": "Hızlı not…",
+  "Quick note": "Hızlı not",
+  "Goes to the inbox.": "ideabox'a gider.",
+  "Note": "Not",
   "Note window": "Not penceresi",
   "Note for this session…": "Bu oturuma not…",
   "Decision log": "Karar günlüğü",

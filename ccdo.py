@@ -2667,6 +2667,263 @@ class IPCServer(threading.Thread):
                 conn.close()
 
 
+
+# --------------------------------------------------------------------------- #
+#  macOS menu bar
+# --------------------------------------------------------------------------- #
+#
+# GTK runs on macOS, but it never looks like it belongs there: foreign
+# controls, a deprecated status icon, an icon theme that is not installed.
+# This is a native front end over the same core — the queue, the hooks, the
+# delivery and the log are all shared, only the surface differs.
+#
+# It is deliberately smaller than the GTK window. On macOS the menu carries
+# what the window is for: see what is queued, park a note, hand the next one
+# over. Reordering, history and the settings window stay on Linux; the files
+# and the CLI cover them.
+
+_MAC_ACTIONS = {}                # menu item tag -> callable
+
+
+def start_mac_gui():
+    """Run the macOS menu bar app. Returns False if PyObjC is unavailable."""
+    try:
+        import objc
+        from Foundation import NSObject, NSTimer, NSURL, NSMakeRect
+        from AppKit import (NSApplication, NSStatusBar, NSMenu, NSMenuItem,
+                            NSImage, NSAlert, NSTextField, NSWorkspace,
+                            NSVariableStatusItemLength,
+                            NSApplicationActivationPolicyAccessory)
+    except Exception as e:
+        sys.stderr.write(
+            "ccdo: the menu bar app needs PyObjC (%s).\n"
+            "    python3 -m pip install pyobjc-framework-Cocoa\n" % e)
+        return False
+
+    cfg = load_config()
+    load_language(cfg.get("language"))
+    store = Store(cfg)
+
+    class Dispatch(NSObject):
+        """One Objective-C target for every menu item.
+
+        Each item carries a tag; the callable lives on the Python side. This
+        keeps the bridge to a single selector instead of one per action.
+        """
+
+        def perform_(self, sender):
+            fn = _MAC_ACTIONS.get(sender.tag())
+            if fn is None:
+                return
+            try:
+                fn()
+            except Exception as e:
+                sys.stderr.write("[ccdo] menu action failed: %s\n" % e)
+
+        def tick_(self, timer):
+            try:
+                app.refresh()
+            except Exception as e:
+                sys.stderr.write("[ccdo] refresh error: %s\n" % e)
+
+    dispatch = Dispatch.alloc().init()
+    SELECTOR = objc.selector(Dispatch.perform_, signature=b"v@:@")
+
+    def ask(title, body, target, send):
+        """A one-field sheet for a new note. NSAlert is the native minimum."""
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(title)
+        alert.setInformativeText_(body)
+        field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 320, 24))
+        alert.setAccessoryView_(field)
+        alert.addButtonWithTitle_(_("Add"))
+        alert.addButtonWithTitle_(_("Cancel"))
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        alert.window().makeFirstResponder_(field)
+        if alert.runModal() != 1000:            # 1000 is the first button
+            return
+        text = str(field.stringValue()).strip()
+        if not text:
+            return
+        task = store.add(text, target=target)
+        if task and send:
+            ok, msg = deliver(cfg, store, task)
+            notify("ccdo", msg, cfg)
+        app.refresh(force=True)
+
+    class MenuBarApp(object):
+        def __init__(self):
+            self.sessions = []
+            self.signature = None
+            bar = NSStatusBar.systemStatusBar()
+            self.item = bar.statusItemWithLength_(NSVariableStatusItemLength)
+            icon = NSImage.alloc().initWithContentsOfFile_(write_icons())
+            if icon is not None:
+                icon.setSize_((18, 18))
+                # A template image is recoloured by macOS, so it stays legible
+                # whether the menu bar is light or dark.
+                icon.setTemplate_(True)
+                self.item.button().setImage_(icon)
+            else:
+                self.item.button().setTitle_("ccdo")
+            self.menu = NSMenu.alloc().init()
+            self.menu.setAutoenablesItems_(False)
+            self.item.setMenu_(self.menu)
+
+        # -- building ------------------------------------------------- #
+
+        def add(self, menu, title, fn=None, enabled=True):
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                title, SELECTOR if fn else None, "")
+            if fn:
+                tag = len(_MAC_ACTIONS) + 1
+                _MAC_ACTIONS[tag] = fn
+                item.setTag_(tag)
+                item.setTarget_(dispatch)
+            item.setEnabled_(bool(enabled and fn))
+            menu.addItem_(item)
+            return item
+
+        def separator(self, menu):
+            menu.addItem_(NSMenuItem.separatorItem())
+
+        def build(self):
+            _MAC_ACTIONS.clear()
+            self.menu.removeAllItems()
+
+            latest = read_update_cache().get("latest", "")
+            if newer_version(latest):
+                self.add(self.menu, "⬆  " + _("Update available: %s") % latest,
+                         self.show_update)
+                self.separator(self.menu)
+
+            self.add(self.menu, _("Quick note…"),
+                     lambda: ask(_("Quick note"), _("Goes to the inbox."),
+                                 None, False))
+            self.separator(self.menu)
+
+            shown = 0
+            for sess in self.sessions:
+                tasks = store.pending(sess["target"])
+                if sess["target"] == INBOX and not tasks:
+                    continue
+                shown += 1
+                mark = "" if sess.get("live") else "  (%s)" % _("closed")
+                head = self.add(self.menu, "%s — %d%s"
+                                % (sess["label"], len(tasks), mark), None)
+                sub = NSMenu.alloc().init()
+                sub.setAutoenablesItems_(False)
+                head.setSubmenu_(sub)
+                head.setEnabled_(True)
+
+                if sess.get("live") and sess["target"] != INBOX:
+                    target = sess["target"]
+                    self.add(sub, _("Note for this session…"),
+                             lambda t=target: ask(_("Note"), sess["label"], t, False))
+                    self.add(sub, _("Send next task"),
+                             lambda t=target: self.send_next(t), bool(tasks))
+                    self.separator(sub)
+                if not tasks:
+                    self.add(sub, "(%s)" % _("empty"), None)
+                for task in tasks[:10]:
+                    line = task["text"].strip().splitlines()[0][:48]
+                    if int(task.get("priority", 0)) > 0:
+                        line = "★ " + line
+                    row = self.add(sub, line, None)
+                    acts = NSMenu.alloc().init()
+                    acts.setAutoenablesItems_(False)
+                    row.setSubmenu_(acts)
+                    row.setEnabled_(True)
+                    tid = task["id"]
+                    self.add(acts, _("Send"), lambda i=tid: self.send_task(i))
+                    self.add(acts, _("Done"), lambda i=tid: self.mark_done(i))
+                    self.add(acts, _("Delete"), lambda i=tid: self.delete(i))
+
+            if not shown:
+                self.add(self.menu, "(%s)" % _("no live sessions"), None)
+
+            self.separator(self.menu)
+            self.add(self.menu, _("Scan sessions"), lambda: self.refresh(force=True))
+            self.add(self.menu, _("Clear completed"),
+                     lambda: (store.purge_done(), self.refresh(force=True)))
+            self.add(self.menu, _("Queue file"), lambda: open_in_editor(QUEUE_MD))
+            self.add(self.menu, _("Decision log"), lambda: open_in_editor(EVENTS_PATH))
+            self.add(self.menu, _("Open the settings file"),
+                     lambda: open_in_editor(CONFIG_PATH))
+            self.separator(self.menu)
+            self.add(self.menu, "ccdo %s" % VERSION, None)
+            self.add(self.menu, _("Quit"), lambda:
+                     NSApplication.sharedApplication().terminate_(None))
+
+        # -- actions --------------------------------------------------- #
+
+        def send_task(self, task_id):
+            task = next((t for t in store.all() if t["id"] == task_id), None)
+            if task:
+                ok, msg = deliver(cfg, store, task)
+                notify("ccdo", msg, cfg)
+            self.refresh(force=True)
+
+        def send_next(self, target):
+            task = store.next_pending(target)
+            if task is None:
+                return
+            self.send_task(task["id"])
+
+        def mark_done(self, task_id):
+            store.update(task_id, status="done")
+            self.refresh(force=True)
+
+        def delete(self, task_id):
+            store.delete(task_id)
+            self.refresh(force=True)
+
+        def show_update(self):
+            cache = read_update_cache()
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(_("ccdo %s is out (you have %s)")
+                                  % (cache.get("latest", ""), VERSION))
+            alert.setInformativeText_(plain_markdown(cache.get("notes"))
+                                      or _("No release notes."))
+            alert.addButtonWithTitle_(_("Open on GitHub"))
+            alert.addButtonWithTitle_(_("Close"))
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            if alert.runModal() == 1000:
+                NSWorkspace.sharedWorkspace().openURL_(
+                    NSURL.URLWithString_(RELEASES_URL))
+
+        # -- refreshing ------------------------------------------------ #
+
+        def refresh(self, force=False):
+            self.sessions = discover_sessions(cfg)[0]
+            signature = tuple(
+                (s["label"], s["target"], bool(s.get("live")),
+                 tuple(t["id"] for t in store.pending(s["target"])))
+                for s in self.sessions)
+            signature += (read_update_cache().get("latest", ""),)
+            if not force and signature == self.signature:
+                return
+            self.signature = signature
+            self.build()
+            pending = len(store.pending())
+            self.item.button().setToolTip_(_("ccdo — %d waiting") % pending)
+
+    ns_app = NSApplication.sharedApplication()
+    # An accessory app lives in the menu bar with no Dock icon and no menu of
+    # its own, which is what a status item should be.
+    ns_app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+
+    app = MenuBarApp()
+    app.refresh(force=True)
+    check_update(cfg)
+
+    NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+        2.0, dispatch, objc.selector(Dispatch.tick_, signature=b"v@:@"),
+        None, True)
+    ns_app.run()
+    return True
+
+
 # --------------------------------------------------------------------------- #
 #  GUI
 # --------------------------------------------------------------------------- #
@@ -4700,11 +4957,13 @@ def main(argv):
         pass
 
     args = argv[1:]
-    if not args or args[0] in ("--tray", "--daemon"):
-        start_gui(False)
-        return 0
-    if args[0] == "--statusicon":
-        start_gui(True)
+    tray = (not args or args[0] in ("--tray", "--daemon", "--statusicon", "--gtk"))
+    if tray:
+        # On macOS the native menu bar app is the front end; GTK runs there but
+        # never looks like it belongs. --gtk asks for the old one anyway.
+        if IS_MAC and args[:1] != ["--gtk"] and start_mac_gui():
+            return 0
+        start_gui(args[:1] == ["--statusicon"])
         return 0
 
     cmd, rest = args[0], args[1:]

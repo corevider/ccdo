@@ -58,6 +58,8 @@ from gi.repository import GdkPixbuf
 raise SystemExit(0 if any(f.get_name() == 'svg' for f in GdkPixbuf.Pixbuf.get_formats()) else 1)" \
     >/dev/null 2>&1 || missing=1
   command -v tmux >/dev/null 2>&1 || missing=1
+  # The menu bar app is native, and PyObjC is the bridge to it.
+  python3 -c "import AppKit" >/dev/null 2>&1 || missing=1
 else
   python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" \
     >/dev/null 2>&1 || missing=1
@@ -74,6 +76,12 @@ if [ "${CCDO_SKIP_DEPS:-}" = "1" ] || [ "$missing" = "0" ]; then
 elif [ "$OS" = "mac" ]; then
   if command -v brew >/dev/null 2>&1; then
     brew install pygobject3 gtk+3 librsvg adwaita-icon-theme tmux
+    # PyObjC has no formula; Homebrew's Python is externally managed, so pip
+    # needs telling that installing into it is deliberate.
+    python3 -m pip install --quiet pyobjc-framework-Cocoa 2>/dev/null \
+      || python3 -m pip install --quiet --break-system-packages \
+           pyobjc-framework-Cocoa 2>/dev/null \
+      || echo "!! could not install PyObjC — the menu bar app will not start"
   else
     echo "!! Homebrew not found — install it first: https://brew.sh"
     echo "   then: brew install pygobject3 gtk+3 librsvg adwaita-icon-theme tmux"

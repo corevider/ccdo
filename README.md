@@ -19,23 +19,23 @@ session whose tab you wrote it under — no guessing.
 | | Queue, hooks, `/next` | Delivery into the prompt | Window and tray |
 |---|---|---|---|
 | **Linux** | yes | yes, over tmux | yes |
-| **macOS** | yes | yes, over tmux | yes, via Homebrew GTK |
+| **macOS** | yes | yes, over tmux | menu bar app |
 | **Windows** | in WSL | in WSL | in WSL |
 
-On macOS the installer pulls `pygobject3`, `gtk+3` and `tmux` through Homebrew,
-and registers a launchd agent so ccdo starts at login — the same job the
-systemd user unit does on Linux. The tray icon lands in the menu bar.
+On macOS the front end is a native menu bar app, not the GTK window. GTK runs
+there, but it never looks like it belongs: foreign controls, a deprecated
+status icon, an icon theme that is not installed. The core is the same — the
+queue, the hooks, delivery and the log are shared; only the surface differs.
 
-One thing there is not what a Linux install gives you: there is no
-AppIndicator on macOS, so the tray falls back to `Gtk.StatusIcon` and the icon
-carries no pending-task badge — the count is in the menu and the tooltip
-instead.
+The menu carries what the window is for: what is queued, park a note, hand the
+next one over, and per-task Send / Done / Delete. Reordering, the history
+section and the settings window stay on Linux; the files and the CLI cover
+them there. `ccdo --gtk` asks for the GTK window anyway.
 
-GdkPixbuf on macOS ships without an SVG loader unless `librsvg` is installed,
-and every symbolic icon in the window is an SVG — without it the window comes
-up full of broken-image placeholders. The installer treats it as a dependency
-rather than a nicety. The tray icon is drawn with Cairo either way, so it
-survives even where SVG does not.
+It needs PyObjC (`python3 -m pip install pyobjc-framework-Cocoa`), which is the
+one dependency macOS adds. The installer also pulls `gtk+3`, `librsvg` and
+`tmux` through Homebrew, and registers a launchd agent so ccdo starts at login
+— the same job the systemd user unit does on Linux.
 
 Native Windows is not supported and is not planned. Without tmux the thing
 that makes ccdo worth using — typing the task into a waiting prompt — cannot

@@ -26,7 +26,9 @@ def source_strings():
         return s.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
 
     keys = set()
-    for m in re.finditer(r'_\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', src):
+    # The lookbehind matters: PyObjC method names end in an underscore, so
+    # setTitle_("ccdo") would otherwise read as a call to _().
+    for m in re.finditer(r'(?<![A-Za-z0-9_])_\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', src):
         parts = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))
         keys.add(unescape("".join(parts)))
     for section, fields in jd.SETTINGS_SCHEMA:
