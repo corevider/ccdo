@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.12] - 2026-08-12
+
+### Fixed
+
+- **macos:** open dialogs after the menu closes, not from inside it (4a135fe)
 ## [1.0.11] - 2026-08-12
 
 ### Fixed
