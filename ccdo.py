@@ -510,6 +510,13 @@ def atomic_write(path, text):
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 
+def new_image_path(when=None):
+    """A fresh path for a pasted image, timestamped so the folder reads well."""
+    ensure_dirs()
+    stamp = (when or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    return os.path.join(IMAGES_DIR, "%s-%s.png" % (stamp, uuid.uuid4().hex[:6]))
+
+
 def save_pasted_image(pixbuf, when=None):
     """Write a pasted image to disk as PNG and return its path.
 
@@ -517,11 +524,14 @@ def save_pasted_image(pixbuf, when=None):
     path into the note is enough: the queue, the history and the drop files
     all stay plain text.
     """
-    ensure_dirs()
-    stamp = (when or datetime.now()).strftime("%Y%m%d-%H%M%S")
-    path = os.path.join(IMAGES_DIR, "%s-%s.png" % (stamp, uuid.uuid4().hex[:6]))
+    path = new_image_path(when)
     pixbuf.savev(path, "png", [], [])
     return path
+
+
+def image_insert_text(paths, at_line_start):
+    """What a pasted image becomes in the note: its path, on a line of its own."""
+    return ("" if at_line_start else "\n") + "\n".join(paths) + "\n"
 
 
 def image_paths_from_uris(uris):
@@ -2189,8 +2199,9 @@ def _deliver(cfg, store, task, force=False):
                 return False, _("session is closed: %s") % target
         ok, msg = send_tmux(cfg, target, payload)
         if not ok and drop_path is None and "\n" in payload:
-            # Bracketed paste tutmadi (eski tmux, kirpilmis buffer): metni
-            # dosyaya dusurup tek satirlik referansla tekrar dene.
+            # The bracketed paste did not take (an old tmux, a truncated
+            # buffer): drop the text into a file and try again with the
+            # one-line reference.
             payload, drop_path = payload_via_file(cfg, task)
             ok, msg = send_tmux(cfg, target, payload)
         if ok:
@@ -3304,8 +3315,7 @@ def start_gui(use_statusicon=False):
         buf = tv.get_buffer()
         buf.delete_selection(True, tv.get_editable())
         at = buf.get_iter_at_mark(buf.get_insert())
-        lead = "" if at.starts_line() else "\n"
-        buf.insert_at_cursor(lead + "\n".join(paths) + "\n")
+        buf.insert_at_cursor(image_insert_text(paths, at.starts_line()))
 
     def attach_image_paste(tv):
         """Write a pasted image to disk and put its path into the note.
