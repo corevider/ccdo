@@ -68,9 +68,9 @@ cmd="$(printf '%q ' "$CLAUDE" "$@")"
 # afterwards leaves the running pane on the old value. So the session starts on
 # a throwaway shell, takes the options, and the real pane is split off after.
 if tmux new-session -d -s "$name" 2>/dev/null; then
-  tmux set-option -t "$name" history-limit "${CCDO_TMUX_HISTORY:-50000}" >/dev/null 2>&1
+  tmux set-option -t "$name" history-limit "${CCDO_TMUX_HISTORY:-50000}" 2>/dev/null
   [ "${CCDO_TMUX_MOUSE:-1}" = "1" ] &&
-    tmux set-option -t "$name" mouse on >/dev/null 2>&1
+    tmux set-option -t "$name" mouse on 2>/dev/null
   if tmux split-window -d -t "$name" "$cmd" 2>/dev/null; then
     tmux kill-pane -t "$name".0 2>/dev/null
     exec tmux attach-session -t "$name"

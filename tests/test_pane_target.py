@@ -57,19 +57,22 @@ r.check(os.access(WRAP, os.X_OK), "claude-tmux is executable")
 stub = os.path.join(jd.TMPDIR if hasattr(jd, "TMPDIR") else "/tmp", "stub")
 os.makedirs(stub, exist_ok=True)
 
-# Sahte tmux: has-session'a hangi adin soruldugunu ve new-session'in hangi
-# adla cagrildigini yazar. cc-<dizin> zaten varsa -2 ekleniyor mu?
+# A fake tmux that reports the calls the wrapper makes. cc-<dir> already
+# exists, so the wrapper has to pick cc-<dir>-2; and the pane has to be split
+# off after the options are set, or it keeps the default history.
 with open(os.path.join(stub, "tmux"), "w") as f:
     f.write("""#!/usr/bin/env bash
-if [ "$1" = "has-session" ]; then
-    # cagri: tmux has-session -t "=<ad>"  -> ad $3'te
+case "$1" in
+  has-session)
+    # called as: tmux has-session -t "=<name>"
     [ "$3" = "=cc-proje" ] && exit 0
-    exit 1
-fi
-if [ "$1" = "new-session" ]; then
-    echo "NEW-SESSION name=$3 cmd=$4"
-    exit 0
-fi
+    exit 1 ;;
+  new-session)   echo "NEW-SESSION args=$*" ;;
+  set-option)    echo "SET $4=$5" ;;
+  split-window)  echo "SPLIT target=$4 cmd=$5" ;;
+  kill-pane)     echo "KILL $3" ;;
+  attach-session) echo "ATTACH $3" ;;
+esac
 exit 0
 """)
 os.chmod(os.path.join(stub, "tmux"), 0o755)
@@ -85,8 +88,29 @@ env = dict(os.environ, PATH=stub + os.pathsep + os.environ["PATH"])
 env.pop("TMUX", None)
 out = subprocess.run([WRAP, "--model", "opus"], cwd=proje, env=env,
                      capture_output=True, text=True).stdout.strip()
-r.check("name=cc-proje-2" in out, "with a session of that name already up, a new one is opened", out)
+r.check("cc-proje-2" in out, "with a session of that name already up, a new one is opened", out)
 r.check("--model opus" in out, "arguments are passed through", out)
+
+# The options have to be set before the pane exists: tmux applies
+# history-limit at pane creation, and setting it afterwards leaves the running
+# pane on the old value.
+lines = out.splitlines()
+def first(prefix):
+    return next((i for i, l in enumerate(lines) if l.startswith(prefix)), -1)
+
+r.check(first("SET history-limit") >= 0 and first("SPLIT") >= 0
+        and first("SET history-limit") < first("SPLIT"),
+        "history-limit is set before the pane is created", out)
+r.check(any(l.startswith("SET mouse=on") for l in lines),
+        "the mouse is turned on, so the wheel scrolls the pane", out)
+r.check(first("SPLIT") < first("KILL"),
+        "the throwaway shell is killed only after the real pane exists", out)
+
+# Opting out has to be honoured, since it changes how selection behaves.
+out_nomouse = subprocess.run([WRAP], cwd=proje, env=dict(env, CCDO_TMUX_MOUSE="0"),
+                             capture_output=True, text=True).stdout
+r.check("SET mouse=on" not in out_nomouse,
+        "CCDO_TMUX_MOUSE=0 leaves the mouse alone", out_nomouse.strip())
 
 # tmux icindeyken ic ice sokmamali: dogrudan claude calismali
 env2 = dict(env, TMUX="/tmp/tmux-1000/default,123,0")
