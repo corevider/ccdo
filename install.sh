@@ -50,6 +50,13 @@ missing=0
 if [ "$OS" = "mac" ]; then
   python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" \
     >/dev/null 2>&1 || missing=1
+  # Every symbolic icon in the window is an SVG, and GdkPixbuf reads SVG only
+  # with librsvg. Without it the toolbar comes up full of broken-image
+  # placeholders, so it counts as a missing dependency, not a nicety.
+  python3 -c "import gi; gi.require_version('GdkPixbuf','2.0')
+from gi.repository import GdkPixbuf
+raise SystemExit(0 if any(f.get_name() == 'svg' for f in GdkPixbuf.Pixbuf.get_formats()) else 1)" \
+    >/dev/null 2>&1 || missing=1
   command -v tmux >/dev/null 2>&1 || missing=1
 else
   python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk" \
@@ -66,10 +73,10 @@ if [ "${CCDO_SKIP_DEPS:-}" = "1" ] || [ "$missing" = "0" ]; then
   echo "   already satisfied, skipping the package manager"
 elif [ "$OS" = "mac" ]; then
   if command -v brew >/dev/null 2>&1; then
-    brew install pygobject3 gtk+3 tmux
+    brew install pygobject3 gtk+3 librsvg adwaita-icon-theme tmux
   else
     echo "!! Homebrew not found — install it first: https://brew.sh"
-    echo "   then: brew install pygobject3 gtk+3 tmux"
+    echo "   then: brew install pygobject3 gtk+3 librsvg adwaita-icon-theme tmux"
   fi
 elif command -v apt >/dev/null 2>&1; then
   sudo apt update

@@ -26,11 +26,16 @@ On macOS the installer pulls `pygobject3`, `gtk+3` and `tmux` through Homebrew,
 and registers a launchd agent so ccdo starts at login — the same job the
 systemd user unit does on Linux. The tray icon lands in the menu bar.
 
-Two things there are not what a Linux install gives you. There is no
-AppIndicator on macOS, so the tray falls back to `Gtk.StatusIcon`, which means
-the icon carries no pending-task badge — the count is in the menu and the
-tooltip instead. And GdkPixbuf on macOS usually ships without an SVG loader,
-so the icon is drawn with Cairo and saved as PNG rather than used as a vector.
+One thing there is not what a Linux install gives you: there is no
+AppIndicator on macOS, so the tray falls back to `Gtk.StatusIcon` and the icon
+carries no pending-task badge — the count is in the menu and the tooltip
+instead.
+
+GdkPixbuf on macOS ships without an SVG loader unless `librsvg` is installed,
+and every symbolic icon in the window is an SVG — without it the window comes
+up full of broken-image placeholders. The installer treats it as a dependency
+rather than a nicety. The tray icon is drawn with Cairo either way, so it
+survives even where SVG does not.
 
 Native Windows is not supported and is not planned. Without tmux the thing
 that makes ccdo worth using — typing the task into a waiting prompt — cannot

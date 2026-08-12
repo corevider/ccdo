@@ -116,6 +116,7 @@
   "Inbox notes have no target. Move one to a session with ⇄.": "ideabox'taki notların hedefi yok. ⇄ ile bir oturuma taşı.",
   "takes the next one at the end of each turn": "her tur sonunda sıradakini alır",
   "hands over nothing on its own": "kendiliğinden görev vermez",
+  "no auto on this tab": "bu sekmede oto yok",
   "Claude asked a question. Sending a task would answer it on your behalf — answer it first and the lock lifts.": "Claude bir soru sordu. Görev göndermek onun yerine cevap vermek olurdu — önce sen cevapla, kilit kalkacak.",
   "auto is on — Claude takes the next task at the end of every turn.": "oto açık — Claude her turu bitirdiğinde sıradaki görevi alacak.",
   "This session is not in tmux: ccdo hands over nothing on its own. Type /next in it, or switch 'auto' on.": "Bu oturum tmux'ta değil: ccdo kendiliğinden görev vermez. Oturumda /next yaz, ya da 'oto'yu işaretle.",

@@ -2717,6 +2717,11 @@ def start_gui(use_statusicon=False):
     /* --- ground -------------------------------------------------------- */
     .jd-window {{ background: {bg}; color: {text}; }}
 
+    /* The frame GTK draws around a client-side-decorated window. Left to the
+       theme it came up light, which on macOS showed as a pale border around
+       the whole window. */
+    .jd-window decoration {{ background: {bg}; border: 1px solid {border_soft}; }}
+
     /* Title bar: only the background is ours. We leave the close/minimise/
        maximise buttons alone — those are the desktop's own and have to look
        like it. That is why every element-level rule sits under .jd-body: put
@@ -3436,7 +3441,7 @@ def start_gui(use_statusicon=False):
                 self.set_auto_hint(on)
             else:
                 self.auto.set_sensitive(False)
-                self.auto_hint.set_text("bu sekmede oto yok")
+                self.auto_hint.set_text(_("no auto on this tab"))
 
             tasks = [t for t in store.all()
                      if t.get("status") != "done"
@@ -4015,6 +4020,11 @@ def start_gui(use_statusicon=False):
             IPCServer(self.on_ipc).start()
             self.discover()
             self.start_update_check()
+            # And keep looking. Checking only at startup meant a tray left
+            # running for days never noticed a release — you had to restart it
+            # to be told. check_update rate-limits itself to once a day, so
+            # asking hourly costs nothing but a cache read.
+            GLib.timeout_add_seconds(3600, self._recheck_updates)
             GLib.timeout_add_seconds(2, self.poll_store)
             GLib.timeout_add_seconds(max(2, int(cfg.get("discover_interval", 4))),
                                      self.poll_sessions)
@@ -4346,6 +4356,10 @@ def start_gui(use_statusicon=False):
                     GLib.idle_add(self._once(self.rebuild_menu))
 
             threading.Thread(target=work, daemon=True).start()
+
+        def _recheck_updates(self):
+            self.start_update_check()
+            return True                      # keep the timer alive
 
         def show_update(self):
             """The update window: what changed, and a button that does it.
