@@ -19,6 +19,7 @@ Usage:
     ccdo send [id]              # hand over to Claude Code
     ccdo sessions               # live sessions with their color and label
     ccdo targets                # raw tmux pane list
+    ccdo paste-check            # macOS: what the clipboard holds, and can we save it
     ccdo path                   # where the files live
     ccdo version [--check]      # version; --check asks whether a newer one is out
     ccdo update [--apply]       # print the update command, or run it
@@ -33,6 +34,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import traceback
 import time
 import urllib.error
 import urllib.parse
@@ -2779,6 +2781,47 @@ def images_from_pasteboard(pb):
     return out
 
 
+def paste_check():
+    """Report what the clipboard holds and whether an image can be saved.
+
+    A paste that quietly does nothing has several possible causes — no image
+    type on the pasteboard, a conversion that failed, a write that failed —
+    and from the outside they look the same. This tells them apart.
+    """
+    if not IS_MAC:
+        sys.stderr.write("paste-check is macOS only\n")
+        return 1
+    try:
+        from AppKit import NSPasteboard
+    except Exception as e:
+        sys.stderr.write("PyObjC is missing (%s)\n" % e)
+        return 1
+
+    pb = NSPasteboard.generalPasteboard()
+    kinds = [str(t) for t in (pb.types() or [])]
+    print("clipboard carries %d type(s):" % len(kinds))
+    for kind in kinds:
+        data = pb.dataForType_(kind)
+        size = data.length() if data is not None else 0
+        print("   %-38s %d bytes" % (kind, size))
+    if not kinds:
+        print("   (nothing — copy a screenshot first)")
+
+    try:
+        paths = images_from_pasteboard(pb)
+    except Exception:
+        print("\nimages_from_pasteboard raised:")
+        traceback.print_exc()
+        return 1
+    if not paths:
+        print("\nno image found — a paste here would fall back to plain text")
+        return 1
+    for path in paths:
+        size = os.path.getsize(path) if os.path.exists(path) else -1
+        print("\nsaved: %s (%d bytes)" % (path, size))
+    return 0
+
+
 def start_mac_gui():
     """Run the macOS menu bar app. Returns False if PyObjC is unavailable."""
     try:
@@ -5421,7 +5464,7 @@ def main(argv):
     if cmd == "diag":
         print("== the Claude Code settings chain ==")
         reg = Registry()
-        recs = list(reg.all().values()) or [{"cwd": os.getcwd(), "session_id": "(yok)"}]
+        recs = list(reg.all().values()) or [{"cwd": os.getcwd(), "session_id": "(none)"}]
         for rec in recs:
             cwd = rec.get("cwd") or os.getcwd()
             print("\n-- session %s" % (rec.get("session_id") or "?"))
@@ -5462,6 +5505,9 @@ def main(argv):
         if not names:
             print("   (no custom theme — built-in themes yield no color)")
         return 0
+
+    if cmd == "paste-check":
+        return paste_check()
 
     if cmd == "targets":
         panes = tmux_panes()
