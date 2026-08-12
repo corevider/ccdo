@@ -9,6 +9,15 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.17] - 2026-08-12
+
+### Added
+
+- **cli:** ccdo paste-check, for when a paste does nothing (25cc27e)
+
+### Fixed
+
+- **macos:** read pasted images through NSImage, not two named types (ffd09bb)
 ## [1.0.16] - 2026-08-12
 
 ### Added
