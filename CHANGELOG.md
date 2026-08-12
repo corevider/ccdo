@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.10] - 2026-08-12
+
+### Added
+
+- **install:** set up the Claude Code hooks during install (67aada5)
 ## [1.0.9] - 2026-08-12
 
 ### Fixed
