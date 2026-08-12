@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.14] - 2026-08-12
+
+### Added
+
+- **macos:** a native menu bar app instead of the GTK window (cb74355)
 ## [1.0.13] - 2026-08-12
 
 ### Fixed
