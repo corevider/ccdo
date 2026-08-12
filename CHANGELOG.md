@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.16] - 2026-08-12
+
+### Added
+
+- **macos:** a note window with many lines and pasted images (4848b9e)
 ## [1.0.15] - 2026-08-12
 
 ### Fixed
