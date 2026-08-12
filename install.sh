@@ -116,20 +116,33 @@ fi
 
 echo "==> Files"
 mkdir -p "$BIN" "$APPS" "$UNITS"
-# Pick an interpreter that can actually import gi. `env python3` is not
-# enough: on macOS Homebrew installs PyGObject into its own Python while
+# Pick an interpreter that can actually import the GUI bridge. `env python3`
+# is not enough: on macOS Homebrew installs into its own Python while
 # /usr/bin/python3 wins the PATH, and a virtualenv can do the same on Linux.
-# The queue and the hooks run on any python3, but the window needs this one.
+# The queue and the hooks run on any python3, but the interface needs this one.
+if [ "$OS" = "mac" ]; then
+  # One interpreter with both is best: PyObjC drives the menu bar, gi still
+  # draws `ccdo show`. Apple's /usr/bin/python3 carries PyObjC but no gi, so
+  # accept PyObjC alone rather than fall back to a Python with neither.
+  BEST="import AppKit, gi"; NEED="import AppKit"
+  NEED_NAME="PyObjC"; NEED_UI="menu bar app"
+else
+  BEST="import gi"; NEED="import gi"
+  NEED_NAME="PyGObject"; NEED_UI="tray window"
+fi
 PY=""
-for cand in "$(command -v python3 || true)" /opt/homebrew/bin/python3 \
-            /usr/local/bin/python3 /usr/bin/python3; do
-  [ -x "$cand" ] || continue
-  if "$cand" -c "import gi" >/dev/null 2>&1; then PY="$cand"; break; fi
+for probe in "$BEST" "$NEED"; do
+  for cand in "$(command -v python3 || true)" /opt/homebrew/bin/python3 \
+              /usr/local/bin/python3 /usr/bin/python3; do
+    [ -x "$cand" ] || continue
+    if "$cand" -c "$probe" >/dev/null 2>&1; then PY="$cand"; break; fi
+  done
+  [ -n "$PY" ] && break
 done
 if [ -z "$PY" ]; then
   PY="$(command -v python3)"
-  echo "   no python3 with PyGObject found — installing for $PY"
-  echo "   (the queue and the hooks work; the tray window will not start)"
+  echo "   no python3 with $NEED_NAME found — installing for $PY"
+  echo "   (the queue and the hooks work; the $NEED_UI will not start)"
 else
   echo "   interpreter: $PY"
 fi
