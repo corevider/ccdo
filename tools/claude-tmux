@@ -56,4 +56,28 @@ done
 # tmux takes the command as a single string; we quote it ourselves so
 # arguments with spaces do not get split.
 cmd="$(printf '%q ' "$CLAUDE" "$@")"
+
+# Outside tmux the wheel scrolls the terminal's own scrollback. Inside, tmux
+# draws the screen and owns the history, so that buffer is empty and the wheel
+# does nothing. With mouse on, the wheel enters copy-mode and scrolls the pane
+# instead — the closest thing to the behaviour you get without tmux. Claude
+# Code does not ask for mouse tracking itself, so tmux keeps the events rather
+# than forwarding them to the app.
+#
+# history-limit only applies to a pane at the moment it is created: setting it
+# afterwards leaves the running pane on the old value. So the session starts on
+# a throwaway shell, takes the options, and the real pane is split off after.
+if tmux new-session -d -s "$name" 2>/dev/null; then
+  tmux set-option -t "$name" history-limit "${CCDO_TMUX_HISTORY:-50000}" >/dev/null 2>&1
+  [ "${CCDO_TMUX_MOUSE:-1}" = "1" ] &&
+    tmux set-option -t "$name" mouse on >/dev/null 2>&1
+  if tmux split-window -d -t "$name" "$cmd" 2>/dev/null; then
+    tmux kill-pane -t "$name".0 2>/dev/null
+    exec tmux attach-session -t "$name"
+  fi
+  # Something went wrong before Claude was started; do not leave a stray
+  # session behind holding the name.
+  tmux kill-session -t "$name" 2>/dev/null
+fi
+
 exec tmux new-session -s "$name" "$cmd"

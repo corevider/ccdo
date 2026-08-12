@@ -152,6 +152,19 @@ claude-tmux                 # opens a tmux session named cc-<dir>
 alias claude=claude-tmux    # for muscle memory
 ```
 
+It also turns the mouse on for the session it creates and gives the pane 50000
+lines of history. Outside tmux the wheel scrolls the terminal's own scrollback;
+inside, tmux draws the screen and owns the history, so that buffer is empty and
+the wheel does nothing. With the mouse on, the wheel enters copy-mode and
+scrolls the pane instead. Claude Code does not ask for mouse tracking itself,
+so tmux keeps the events rather than forwarding them. `CCDO_TMUX_MOUSE=0` and
+`CCDO_TMUX_HISTORY=<n>` override both.
+
+`history-limit` only applies to a pane at the moment it is created, so the
+session starts on a throwaway shell, takes the options, and the real pane is
+split off after — setting it afterwards leaves the running pane on the old
+value.
+
 Details: it does not nest if you are already inside tmux; a second session in
 the same directory gets `cc-<dir>-2` (two Claudes cannot share a pane);
 non-interactive calls such as `claude -p`, `--version` or `mcp` do not open
