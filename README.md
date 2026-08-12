@@ -27,10 +27,13 @@ there, but it never looks like it belongs: foreign controls, a deprecated
 status icon, an icon theme that is not installed. The core is the same — the
 queue, the hooks, delivery and the log are shared; only the surface differs.
 
-The menu carries what the window is for: what is queued, park a note, hand the
-next one over, and per-task Send / Done / Delete. Reordering, the history
-section and the settings window stay on Linux; the files and the CLI cover
-them there. `ccdo --gtk` asks for the GTK window anyway.
+The menu carries what the window is for: what is queued, hand the next one
+over, and per-task Send / Done / Delete. Writing happens in a note window of
+its own — as many lines as you like, and a pasted screenshot is saved next to
+the queue with its path dropped into the text, exactly as on Linux. Command
+and Return adds and sends. Reordering, the history section and the settings
+window stay on Linux; the files and the CLI cover them there. `ccdo --gtk`
+asks for the GTK window anyway.
 
 It needs PyObjC (`python3 -m pip install pyobjc-framework-Cocoa`), which is the
 one dependency macOS adds. The installer also pulls `gtk+3`, `librsvg` and
@@ -853,8 +856,8 @@ nothing, so a real session can never end up in an image.
   means no session tab, and you fall back to the inbox plus `xdotool` or
   `/next`. `tmux new -s api -c ~/dev/api 'claude'` is the practical fix.
 - `xdotool` does not work on Wayland; the tmux route works on both.
-- On macOS the icon carries no task count, because `Gtk.StatusIcon` has no
-  badge — the number is in the menu and the tooltip.
+- On macOS the menu bar icon carries no task count — the number is in the
+  menu and the tooltip.
 
 ## Troubleshooting
 
