@@ -9,6 +9,12 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.11] - 2026-08-12
+
+### Fixed
+
+- **macos:** name the app ccdo, and stop it floating over the menu bar (d5880e1)
+- **macos:** install librsvg, and stop the window drawing a pale frame (bf6269d)
 ## [1.0.10] - 2026-08-12
 
 ### Added
