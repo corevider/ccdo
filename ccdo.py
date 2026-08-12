@@ -459,8 +459,13 @@ def svg_supported():
         return False
 
 
-def write_icons():
-    """Put the icon on disk and return the file the tray should use."""
+def write_icons(prefer_png=False):
+    """Put the icon on disk and return the file the tray should use.
+
+    prefer_png is for callers that do not go through GdkPixbuf: NSImage only
+    learned to read SVG in macOS 13, and a bitmap is what a menu bar template
+    image wants anyway.
+    """
     ensure_dirs()
     svg_path = os.path.join(ICON_DIR, "ccdo.svg")
     png_path = os.path.join(ICON_DIR, "ccdo.png")
@@ -472,6 +477,8 @@ def write_icons():
     except Exception as e:
         sys.stderr.write("ccdo: could not draw the icon (%s)\n" % e)
         return svg_path
+    if prefer_png:
+        return png_path
     return svg_path if svg_supported() else png_path
 
 
@@ -2688,7 +2695,6 @@ _MAC_ACTIONS = {}                # menu item tag -> callable
 def start_mac_gui():
     """Run the macOS menu bar app. Returns False if PyObjC is unavailable."""
     try:
-        import objc
         from Foundation import NSObject, NSTimer, NSURL, NSMakeRect
         from AppKit import (NSApplication, NSStatusBar, NSMenu, NSMenuItem,
                             NSImage, NSAlert, NSTextField, NSWorkspace,
@@ -2704,14 +2710,18 @@ def start_mac_gui():
     load_language(cfg.get("language"))
     store = Store(cfg)
 
-    class Dispatch(NSObject):
+    class CcdoDispatch(NSObject):
         """One Objective-C target for every menu item.
 
         Each item carries a tag; the callable lives on the Python side. This
         keeps the bridge to a single selector instead of one per action.
+
+        The method names are prefixed and reach Objective-C as "ccdoAction:"
+        and "ccdoTick:" — a plain name like perform: risks colliding with a
+        selector NSObject already answers to.
         """
 
-        def perform_(self, sender):
+        def ccdoAction_(self, sender):
             fn = _MAC_ACTIONS.get(sender.tag())
             if fn is None:
                 return
@@ -2720,14 +2730,14 @@ def start_mac_gui():
             except Exception as e:
                 sys.stderr.write("[ccdo] menu action failed: %s\n" % e)
 
-        def tick_(self, timer):
+        def ccdoTick_(self, timer):
             try:
                 app.refresh()
             except Exception as e:
                 sys.stderr.write("[ccdo] refresh error: %s\n" % e)
 
-    dispatch = Dispatch.alloc().init()
-    SELECTOR = objc.selector(Dispatch.perform_, signature=b"v@:@")
+    dispatch = CcdoDispatch.alloc().init()
+    SELECTOR = b"ccdoAction:"
 
     def ask(title, body, target, send):
         """A one-field sheet for a new note. NSAlert is the native minimum."""
@@ -2739,7 +2749,8 @@ def start_mac_gui():
         alert.addButtonWithTitle_(_("Add"))
         alert.addButtonWithTitle_(_("Cancel"))
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-        alert.window().makeFirstResponder_(field)
+        alert.layout()
+        alert.window().setInitialFirstResponder_(field)
         if alert.runModal() != 1000:            # 1000 is the first button
             return
         text = str(field.stringValue()).strip()
@@ -2757,7 +2768,7 @@ def start_mac_gui():
             self.signature = None
             bar = NSStatusBar.systemStatusBar()
             self.item = bar.statusItemWithLength_(NSVariableStatusItemLength)
-            icon = NSImage.alloc().initWithContentsOfFile_(write_icons())
+            icon = NSImage.alloc().initWithContentsOfFile_(write_icons(True))
             if icon is not None:
                 icon.setSize_((18, 18))
                 # A template image is recoloured by macOS, so it stays legible
@@ -2819,7 +2830,8 @@ def start_mac_gui():
                 if sess.get("live") and sess["target"] != INBOX:
                     target = sess["target"]
                     self.add(sub, _("Note for this session…"),
-                             lambda t=target: ask(_("Note"), sess["label"], t, False))
+                             lambda t=target, name=sess["label"]:
+                             ask(_("Note"), name, t, False))
                     self.add(sub, _("Send next task"),
                              lambda t=target: self.send_next(t), bool(tasks))
                     self.separator(sub)
@@ -2895,7 +2907,7 @@ def start_mac_gui():
         # -- refreshing ------------------------------------------------ #
 
         def refresh(self, force=False):
-            self.sessions = discover_sessions(cfg)[0]
+            self.sessions = discover_sessions(cfg)
             signature = tuple(
                 (s["label"], s["target"], bool(s.get("live")),
                  tuple(t["id"] for t in store.pending(s["target"])))
@@ -2915,11 +2927,13 @@ def start_mac_gui():
 
     app = MenuBarApp()
     app.refresh(force=True)
-    check_update(cfg)
+    # On its own thread: the icon should appear at once, not after the network
+    # has had its say. The timer picks the answer up out of the cache.
+    if cfg.get("check_updates", True):
+        threading.Thread(target=lambda: check_update(cfg), daemon=True).start()
 
     NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
-        2.0, dispatch, objc.selector(Dispatch.tick_, signature=b"v@:@"),
-        None, True)
+        2.0, dispatch, b"ccdoTick:", None, True)
     ns_app.run()
     return True
 
