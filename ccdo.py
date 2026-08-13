@@ -531,9 +531,20 @@ def save_pasted_image(pixbuf, when=None):
     return path
 
 
+def quote_path(path):
+    """A path as it should read in a prompt: quoted, so a space cannot split it."""
+    return '"%s"' % path.replace('"', '\\"')
+
+
 def image_insert_text(paths, at_line_start):
-    """What a pasted image becomes in the note: its path, on a line of its own."""
-    return ("" if at_line_start else "\n") + "\n".join(paths) + "\n"
+    """What an attached file becomes in the note: its path, on a line of its own.
+
+    Quoted, because names with spaces are the rule rather than the exception —
+    a macOS screenshot is called "Screen Shot 2026-08-13 at 17.20.45.png" —
+    and an unquoted path would be read as several words.
+    """
+    lines = "\n".join(quote_path(p) for p in paths)
+    return ("" if at_line_start else "\n") + lines + "\n"
 
 
 def image_paths_from_uris(uris):
@@ -2730,26 +2741,39 @@ def png_data_from_image(image):
     return rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
 
 
+def files_from_pasteboard(pb):
+    """Paths for the files on the pasteboard, whatever kind they are.
+
+    Not only images: a PDF, a log, a spreadsheet dropped into a note is worth
+    the same as a screenshot, because Claude Code opens a path it is given.
+    The file has to exist — a link copied out of a browser also arrives as a
+    URL, and that is not an attachment.
+    """
+    from Foundation import NSURL
+
+    out = []
+    for url in pb.readObjectsForClasses_options_([NSURL], None) or []:
+        path = str(url.path() or "")
+        if path and os.path.isfile(path):
+            out.append(path)
+    return out
+
+
 def images_from_pasteboard(pb):
-    """Paths for the images on the pasteboard, saving pixels to disk as PNG.
+    """Paths for whatever the pasteboard is carrying, pixels saved as PNG.
 
     A screenshot arrives as pixels, not text, so a plain paste would write
-    nothing at all. A file copied in Finder keeps its own path — re-saving it
-    would only make a second copy.
+    nothing at all. A file keeps its own path — re-saving it would only make a
+    second copy.
 
     Reading NSImage rather than asking for one flavour is what makes this hold
     up: a screenshot is TIFF, a browser hands over PNG, Preview can offer
     JPEG or HEIC, and NSImage takes all of them.
     """
     import AppKit
-    from Foundation import NSURL
     from AppKit import NSImage
 
-    out = []
-    for url in pb.readObjectsForClasses_options_([NSURL], None) or []:
-        path = str(url.path() or "")
-        if path.lower().endswith(IMAGE_SUFFIXES) and os.path.isfile(path):
-            out.append(path)
+    out = files_from_pasteboard(pb)
     if out:
         return out
 
@@ -2879,6 +2903,7 @@ def start_mac_gui():
     PIN_TOP = const("NSViewMaxYMargin", 32)
     BEZEL_BORDER = const("NSBezelBorder", 2)
     ROUNDED = const("NSRoundedBezelStyle", 1)
+    DRAG_COPY = const("NSDragOperationCopy", 1)
     CMD_KEY = const("NSEventModifierFlagCommand", 1 << 20)
     SHIFT_KEY = const("NSEventModifierFlagShift", 1 << 17)
     CTRL_KEY = const("NSEventModifierFlagControl", 1 << 18)
@@ -2976,6 +3001,34 @@ def start_mac_gui():
                 return False
             return True
 
+        def ccdoAcceptDrop_(self, sender):
+            """Take whatever was dropped and write its path into the note."""
+            try:
+                paths = images_from_pasteboard(sender.draggingPasteboard())
+            except Exception as e:
+                sys.stderr.write("[ccdo] could not take the dropped file: %s\n" % e)
+                return False
+            if not paths:
+                return False
+            self.insertText_replacementRange_(
+                image_insert_text(paths, self.ccdoAtLineStart()),
+                self.selectedRange())
+            return True
+
+        def draggingEntered_(self, sender):
+            return DRAG_COPY
+
+        def draggingUpdated_(self, sender):
+            return DRAG_COPY
+
+        def prepareForDragOperation_(self, sender):
+            return True
+
+        def performDragOperation_(self, sender):
+            # A plain text view would drop the bare path in, and a picture
+            # dragged out of a browser not at all.
+            return self.ccdoAcceptDrop_(sender)
+
         def ccdoAtLineStart(self):
             """Does the caret sit at the start of a line?"""
             where = self.selectedRange().location
@@ -3041,6 +3094,10 @@ def start_mac_gui():
             self.tv.setVerticallyResizable_(True)
             self.tv.setHorizontallyResizable_(False)
             self.tv.setAutoresizingMask_(WIDTH_SIZABLE)
+            self.tv.registerForDraggedTypes_(
+                [const("NSPasteboardTypeFileURL", "public.file-url"),
+                 const("NSPasteboardTypePNG", "public.png"),
+                 const("NSPasteboardTypeTIFF", "public.tiff")])
             self.tv.textContainer().setContainerSize_((body_w, HUGE))
             self.tv.textContainer().setWidthTracksTextView_(True)
             scroll.setDocumentView_(self.tv)

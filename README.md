@@ -29,9 +29,11 @@ queue, the hooks, delivery and the log are shared; only the surface differs.
 
 The menu carries what the window is for: what is queued, hand the next one
 over, and per-task Send / Done / Delete. Writing happens in a note window of
-its own — as many lines as you like, and a pasted screenshot is saved next to
-the queue with its path dropped into the text, exactly as on Linux. Command
-and Return adds and sends. Reordering, the history section and the settings
+its own — as many lines as you like. A pasted screenshot is saved next to the
+queue and its path goes into the text, and anything dropped on the window —
+an image, a PDF, a log — is written in the same way, since Claude Code opens
+a path it is given. Paths are quoted, because a name with spaces would
+otherwise be read as several words. Command and Return adds and sends. Reordering, the history section and the settings
 window stay on Linux; the files and the CLI cover them there. `ccdo --gtk`
 asks for the GTK window anyway.
 

@@ -137,6 +137,9 @@ class TextView(Widget):
     def undoManager(self):
         return None
 
+    def registerForDraggedTypes_(self, kinds):
+        self.dragged_types = list(kinds)
+
     def string(self):
         return self.text
 
@@ -512,7 +515,17 @@ win = open_quick_note()
 state["pasteboard"] = Pasteboard(png=b"shot")
 win.tv.type("look at this")
 win.tv.paste_(None)
-saved = win.tv.text.split("\n")[1]
+
+
+def written(text, line=0):
+    """The nth path out of the note, without the quotes it is written with."""
+    lines = [l for l in text.splitlines() if l]
+    r.check(lines[line].startswith('"') and lines[line].endswith('"'),
+            "the path is quoted, so a name with spaces survives", lines[line])
+    return lines[line][1:-1]
+
+
+saved = written(win.tv.text, 1)
 r.check(win.tv.text.startswith("look at this\n"),
         "a path pasted mid-line starts on a line of its own", repr(win.tv.text))
 r.check(os.path.isfile(saved) and open(saved, "rb").read() == b"shot",
@@ -526,25 +539,28 @@ win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
 lines_out = [l for l in win.tv.text.splitlines() if l]
 r.check(len(lines_out) == 2, "two images take a line each", repr(win.tv.text))
-r.check(open(lines_out[0], "rb").read() == b"png-of-one",
+r.check(open(written(win.tv.text, 0), "rb").read() == b"png-of-one",
         "and each is converted to PNG on the way in", lines_out[0])
 
 state["pasteboard"] = Pasteboard(tiff=b"raw-tiff")
 win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
-converted = win.tv.text.strip()
+converted = written(win.tv.text)
 r.check(os.path.isfile(converted)
         and open(converted, "rb").read() == b"png-of-raw-tiff",
         "and raw TIFF is converted on the way in", converted)
 
-existing = os.path.join(jd.IMAGES_DIR, "already-on-disk.png")
+existing = os.path.join(jd.IMAGES_DIR, "already on disk.png")
 open(existing, "wb").write(b"x")
 state["pasteboard"] = Pasteboard(images=[Image(b"ignored")],
-                                 files=[existing, "/tmp/not.txt"])
+                                 files=[existing, "https://example.com/x.png"])
 win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
-r.check(win.tv.text.strip() == existing,
-        "a copied image file keeps its own path instead of being copied again",
+r.check(written(win.tv.text) == existing,
+        "a copied file keeps its own path instead of being copied again",
+        repr(win.tv.text))
+r.check(len([l for l in win.tv.text.splitlines() if l]) == 1,
+        "a link is not an attachment — it does not exist as a file",
         repr(win.tv.text))
 
 state["pasteboard"] = Pasteboard()
@@ -568,7 +584,7 @@ state["pasteboard"] = Pasteboard(png=b"by-command-v")
 win.tv.text, win.tv.caret = "", 0
 r.check(win.tv.performKeyEquivalent_(key("v")) is True,
         "Command+V is claimed by the note field")
-r.check(open(win.tv.text.strip(), "rb").read() == b"by-command-v",
+r.check(open(written(win.tv.text), "rb").read() == b"by-command-v",
         "and it really pastes", repr(win.tv.text))
 r.check(win.tv.performKeyEquivalent_(key("a")) is True and win.tv.selected_all,
         "Command+A selects all, since nothing else would")
@@ -579,10 +595,44 @@ r.check(win.tv.performKeyEquivalent_(key("v", 0)) is False,
 r.check(win.tv.performKeyEquivalent_(key("v", CMD | CTRL)) is False,
         "and Control+Command+V is not ours either")
 
-r.check(jd.image_insert_text(["/a.png"], True) == "/a.png\n",
+r.check(jd.image_insert_text(["/a.png"], True) == '"/a.png"\n',
         "at the start of a line the path needs no leading newline")
-r.check(jd.image_insert_text(["/a.png", "/b.png"], False) == "\n/a.png\n/b.png\n",
+r.check(jd.image_insert_text(["/a.png", "/b.png"], False)
+        == '\n"/a.png"\n"/b.png"\n',
         "mid-line it gets one, and several images take a line each")
+
+
+# ------------------------------------------------------------- drag and drop
+
+r.check(any("file-url" in str(t) for t in win.tv.dragged_types),
+        "the note field asks for dropped files", str(win.tv.dragged_types))
+
+dropped = os.path.join(jd.IMAGES_DIR, "a report.pdf")
+open(dropped, "wb").write(b"%PDF-1.4")
+
+
+def drag(pb):
+    return types.SimpleNamespace(draggingPasteboard=lambda: pb)
+
+
+win.tv.text, win.tv.caret = "", 0
+r.check(win.tv.draggingEntered_(drag(Pasteboard())) == 1,
+        "a drag is welcome, and says so — otherwise the cursor refuses it")
+r.check(win.tv.performDragOperation_(drag(Pasteboard(files=[dropped]))) is True,
+        "the drop is taken")
+r.check(written(win.tv.text) == dropped,
+        "a PDF is as good as an image: Claude Code opens the path either way",
+        repr(win.tv.text))
+
+# Dragged out of a browser there is no file at all, only pixels.
+win.tv.text, win.tv.caret = "", 0
+win.tv.performDragOperation_(drag(Pasteboard(png=b"from-a-browser")))
+r.check(open(written(win.tv.text), "rb").read() == b"from-a-browser",
+        "pixels dragged in are saved, which a plain text view would drop",
+        repr(win.tv.text))
+
+r.check(win.tv.performDragOperation_(drag(Pasteboard())) is False,
+        "and nothing droppable is refused, so the view can do what it likes")
 
 win.win.close()
 for t in store.all():
