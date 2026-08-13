@@ -631,7 +631,12 @@ def recent_screenshot(within=120, folder=None, now=None):
     best, best_age = None, None
     try:
         names = os.listdir(folder)
-    except OSError:
+    except OSError as e:
+        # Worth saying out loud: on macOS the Desktop, Documents and Downloads
+        # folders are behind a permission a background agent is never asked
+        # about, so this fails silently and looks like the feature is off.
+        sys.stderr.write("[ccdo] cannot read the screenshot folder %s (%s)\n"
+                         % (folder, e))
         return None
     for name in names:
         if name.startswith(".") or not name.lower().endswith(IMAGE_SUFFIXES):
@@ -2945,6 +2950,37 @@ def paste_check():
                        ("readable as image", NSImage),
                        ("readable as URL", NSURL)):
         probe(label, lambda c=cls: len(pb.readObjectsForClasses_options_([c], None) or []))
+
+    cfg = load_config()
+    folder = screenshot_dir(cfg)
+    within = int(cfg.get("screenshot_paste_seconds", 120))
+    print("\nscreenshot folder:     %s" % folder)
+    try:
+        names = os.listdir(folder)
+    except OSError as e:
+        names = None
+        print("   cannot be read: %s" % e)
+        print("   macOS keeps Desktop, Documents and Downloads behind a")
+        print("   permission a background agent is never asked about. Point")
+        print("   the screenshots somewhere else and tell ccdo where:")
+        print("       defaults write com.apple.screencapture location ~/Pictures")
+        print("       killall SystemUIServer")
+    if names is not None:
+        shots = [n for n in names
+                 if not n.startswith(".") and n.lower().endswith(IMAGE_SUFFIXES)]
+        print("   %d image(s), %d entries" % (len(shots), len(names)))
+        now = time.time()
+        for name in sorted(shots)[-5:]:
+            try:
+                age = now - os.path.getmtime(os.path.join(folder, name))
+            except OSError as e:
+                print("   %-40s unreadable (%s)" % (name, e))
+                continue
+            print("   %-40s %d seconds old" % (name[:40], age))
+    probe("within %ds" % within, lambda: recent_screenshot(within, folder) or "(none)")
+    probe("newer than clipboard",
+          lambda: newer_screenshot(clipboard_touched_at(pb), within, folder)
+          or "(none — the clipboard wins)")
 
     try:
         paths = images_from_pasteboard(pb)
