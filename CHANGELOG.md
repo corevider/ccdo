@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.23] - 2026-08-13
+
+### Added
+
+- **macos:** drop files on the note window, and quote every path (85ed125)
 ## [1.0.22] - 2026-08-13
 
 ### Fixed
