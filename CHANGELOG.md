@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.26] - 2026-08-13
+
+### Added
+
+- **cli:** paste-check reports the screenshot side too (a1e7511)
 ## [1.0.25] - 2026-08-13
 
 ### Fixed
