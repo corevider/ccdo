@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.20] - 2026-08-13
+
+### Fixed
+
+- **cli:** paste-check no longer trusts a deprecated API alone (2178529)
 ## [1.0.19] - 2026-08-12
 
 ### Added
