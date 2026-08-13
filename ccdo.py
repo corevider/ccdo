@@ -2784,28 +2784,51 @@ def images_from_pasteboard(pb):
 def paste_check():
     """Report what the clipboard holds and whether an image can be saved.
 
-    A paste that quietly does nothing has several possible causes — no image
-    type on the pasteboard, a conversion that failed, a write that failed —
-    and from the outside they look the same. This tells them apart.
+    A paste that quietly does nothing has several possible causes — nothing on
+    the pasteboard, no type we read, a conversion that failed, a write that
+    failed — and from the outside they look the same.
+
+    Every probe is reported separately because they disagree in practice:
+    -types is deprecated and can come back empty on a pasteboard that plainly
+    is not, so a single empty answer proves nothing on its own.
     """
     if not IS_MAC:
         sys.stderr.write("paste-check is macOS only\n")
         return 1
     try:
-        from AppKit import NSPasteboard
+        from Foundation import NSURL
+        from AppKit import NSPasteboard, NSImage, NSString
     except Exception as e:
         sys.stderr.write("PyObjC is missing (%s)\n" % e)
         return 1
 
+    def probe(label, fn):
+        try:
+            print("%-22s %s" % (label + ":", fn()))
+        except Exception as e:
+            print("%-22s raised %s: %s" % (label + ":", type(e).__name__, e))
+
     pb = NSPasteboard.generalPasteboard()
-    kinds = [str(t) for t in (pb.types() or [])]
-    print("clipboard carries %d type(s):" % len(kinds))
-    for kind in kinds:
-        data = pb.dataForType_(kind)
-        size = data.length() if data is not None else 0
-        print("   %-38s %d bytes" % (kind, size))
-    if not kinds:
-        print("   (nothing — copy a screenshot first)")
+    probe("changeCount", lambda: pb.changeCount())
+    probe("types (deprecated)",
+          lambda: ", ".join(str(t) for t in (pb.types() or [])) or "(empty)")
+
+    items = []
+    try:
+        items = list(pb.pasteboardItems() or [])
+    except Exception as e:
+        print("pasteboardItems:      raised %s: %s" % (type(e).__name__, e))
+    print("pasteboardItems:       %d" % len(items))
+    for i, item in enumerate(items):
+        for kind in (item.types() or []):
+            data = item.dataForType_(kind)
+            size = data.length() if data is not None else 0
+            print("   item %d  %-34s %d bytes" % (i, str(kind), size))
+
+    for label, cls in (("readable as text", NSString),
+                       ("readable as image", NSImage),
+                       ("readable as URL", NSURL)):
+        probe(label, lambda c=cls: len(pb.readObjectsForClasses_options_([c], None) or []))
 
     try:
         paths = images_from_pasteboard(pb)
