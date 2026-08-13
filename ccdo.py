@@ -2880,6 +2880,9 @@ def start_mac_gui():
     BEZEL_BORDER = const("NSBezelBorder", 2)
     ROUNDED = const("NSRoundedBezelStyle", 1)
     CMD_KEY = const("NSEventModifierFlagCommand", 1 << 20)
+    SHIFT_KEY = const("NSEventModifierFlagShift", 1 << 17)
+    CTRL_KEY = const("NSEventModifierFlagControl", 1 << 18)
+    ALT_KEY = const("NSEventModifierFlagOption", 1 << 19)
     HUGE = 1.0e7
 
     cfg = load_config()
@@ -2929,6 +2932,8 @@ def start_mac_gui():
         """
 
         def paste_(self, sender):
+            if DEBUG:
+                sys.stderr.write("[ccdo] paste into the note window\n")
             try:
                 paths = images_from_pasteboard(NSPasteboard.generalPasteboard())
             except Exception as e:
@@ -2939,6 +2944,37 @@ def start_mac_gui():
                 return
             text = image_insert_text(paths, self.ccdoAtLineStart())
             self.insertText_replacementRange_(text, self.selectedRange())
+
+        def performKeyEquivalent_(self, event):
+            """Command+V and the rest of the editing keys.
+
+            An accessory app has no menu bar, so there is no Edit menu to turn
+            Command+V into paste: — which is why pasting into this window did
+            nothing at all. The window's own key-equivalent chain does reach
+            here, so the keys are answered directly.
+            """
+            flags = event.modifierFlags()
+            if not (flags & CMD_KEY) or flags & (CTRL_KEY | ALT_KEY):
+                return False
+            key = str(event.charactersIgnoringModifiers() or "").lower()
+            if key == "v":
+                self.paste_(self)
+            elif key == "c":
+                self.copy_(self)
+            elif key == "x":
+                self.cut_(self)
+            elif key == "a":
+                self.selectAll_(self)
+            elif key == "z":
+                manager = self.undoManager()
+                if manager is None:
+                    return False
+                manager.redo() if flags & SHIFT_KEY else manager.undo()
+            else:
+                # Command+Return belongs to the send button further down the
+                # chain, and so does anything else we do not claim.
+                return False
+            return True
 
         def ccdoAtLineStart(self):
             """Does the caret sit at the start of a line?"""

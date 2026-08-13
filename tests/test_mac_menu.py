@@ -122,7 +122,20 @@ class TextView(Widget):
     def initWithFrame_(self, frame):
         Widget.initWithFrame_(self, frame)
         self.text, self.caret, self.plain_pastes = "", 0, 0
+        self.selected_all = False
         return self
+
+    def selectAll_(self, sender):
+        self.selected_all = True
+
+    def copy_(self, sender):
+        pass
+
+    def cut_(self, sender):
+        pass
+
+    def undoManager(self):
+        return None
 
     def string(self):
         return self.text
@@ -539,6 +552,32 @@ win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
 r.check(win.tv.plain_pastes == 1 and not win.tv.text,
         "plain text still pastes as text")
+
+
+# Command+V reaches paste: only because we answer it here: an accessory app
+# has no menu bar, so there is no Edit menu to translate the key.
+CMD, SHIFT, CTRL = 1 << 20, 1 << 17, 1 << 18
+
+
+def key(ch, flags=CMD):
+    return types.SimpleNamespace(modifierFlags=lambda: flags,
+                                 charactersIgnoringModifiers=lambda: ch)
+
+
+state["pasteboard"] = Pasteboard(png=b"by-command-v")
+win.tv.text, win.tv.caret = "", 0
+r.check(win.tv.performKeyEquivalent_(key("v")) is True,
+        "Command+V is claimed by the note field")
+r.check(open(win.tv.text.strip(), "rb").read() == b"by-command-v",
+        "and it really pastes", repr(win.tv.text))
+r.check(win.tv.performKeyEquivalent_(key("a")) is True and win.tv.selected_all,
+        "Command+A selects all, since nothing else would")
+r.check(win.tv.performKeyEquivalent_(key("\r")) is False,
+        "Command+Return is left to the send button further down the chain")
+r.check(win.tv.performKeyEquivalent_(key("v", 0)) is False,
+        "a bare V is just a letter")
+r.check(win.tv.performKeyEquivalent_(key("v", CMD | CTRL)) is False,
+        "and Control+Command+V is not ours either")
 
 r.check(jd.image_insert_text(["/a.png"], True) == "/a.png\n",
         "at the start of a line the path needs no leading newline")
