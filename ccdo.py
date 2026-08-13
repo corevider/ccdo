@@ -565,6 +565,36 @@ def file_paths_from_uris(uris):
     return out
 
 
+_CLIPBOARD_SEEN = {"count": None, "at": 0.0}
+
+
+def clipboard_touched_at(pb, now=None):
+    """When the clipboard last changed, as far as we have seen.
+
+    macOS gives a pasteboard a change count but no timestamp, so we watch the
+    count go by — the menu bar app already looks every couple of seconds — and
+    remember when it moved. That is what makes "whichever is newer" a question
+    we can answer: an image copied ten minutes ago must not win over the
+    screenshot taken a moment ago.
+    """
+    now = now if now is not None else time.time()
+    count = pb.changeCount()
+    if count != _CLIPBOARD_SEEN["count"]:
+        _CLIPBOARD_SEEN["count"], _CLIPBOARD_SEEN["at"] = count, now
+    return _CLIPBOARD_SEEN["at"]
+
+
+def newer_screenshot(clipboard_at, within=120, folder=None, now=None):
+    """A screenshot file taken after the clipboard was last filled, if any."""
+    shot = recent_screenshot(within, folder, now)
+    if shot is None:
+        return None
+    try:
+        return shot if os.path.getmtime(shot) > clipboard_at else None
+    except OSError:
+        return None
+
+
 def screenshot_dir(cfg=None):
     """Where the desktop drops a screenshot file."""
     told = os.path.expanduser((cfg or {}).get("screenshot_dir") or "")
@@ -2997,6 +3027,8 @@ def start_mac_gui():
 
         def ccdoTick_(self, timer):
             try:
+                # Cheap, and it is the only way to date the clipboard.
+                clipboard_touched_at(NSPasteboard.generalPasteboard())
                 app.refresh()
             except Exception as e:
                 sys.stderr.write("[ccdo] refresh error: %s\n" % e)
@@ -3020,17 +3052,22 @@ def start_mac_gui():
         def paste_(self, sender):
             if DEBUG:
                 sys.stderr.write("[ccdo] paste into the note window\n")
+            pb = NSPasteboard.generalPasteboard()
+            clipboard_at = clipboard_touched_at(pb)
             try:
-                paths = images_from_pasteboard(NSPasteboard.generalPasteboard())
+                paths = images_from_pasteboard(pb)
             except Exception as e:
                 sys.stderr.write("[ccdo] could not save the pasted image: %s\n" % e)
                 paths = []
-            if not paths:
-                # Command+Shift+4 wrote a file and left the clipboard alone.
-                shot = recent_screenshot(
-                    int(cfg.get("screenshot_paste_seconds", 120)),
-                    screenshot_dir(cfg))
-                paths = [shot] if shot else []
+            # Command+Shift+4 writes a file and leaves the clipboard alone, so
+            # what is on the clipboard may be an older screenshot that is
+            # nobody's idea of what "paste" means now. Newest wins.
+            shot = newer_screenshot(
+                clipboard_at if paths else 0,
+                int(cfg.get("screenshot_paste_seconds", 120)),
+                screenshot_dir(cfg))
+            if shot:
+                paths = [shot]
             if not paths:
                 self.pasteAsPlainText_(sender)
                 return

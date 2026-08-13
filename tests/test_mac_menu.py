@@ -12,6 +12,7 @@ can say that.
 """
 import os
 import sys
+import time
 import types
 
 from harness import jd, Results, CFG
@@ -261,9 +262,17 @@ class Image(object):
 class Pasteboard(object):
     """A clipboard holding whatever a test puts on it."""
 
+    counter = [0]
+
     def __init__(self, png=None, tiff=None, files=(), images=()):
         self.png, self.tiff = png, tiff
         self.files, self.images = list(files), list(images)
+        # Every new clipboard is a new change count, as macOS reports it.
+        Pasteboard.counter[0] += 1
+        self.count = Pasteboard.counter[0]
+
+    def changeCount(self):
+        return self.count
 
     def readObjectsForClasses_options_(self, classes, options):
         if any(c is Image for c in classes):
@@ -615,6 +624,27 @@ win.tv.text, win.tv.caret, win.tv.plain_pastes = "", 0, 0
 win.tv.paste_(None)
 r.check(not win.tv.text and win.tv.plain_pastes == 1,
         "an old one is left alone — a paste must not surprise you")
+
+# The clipboard is rarely empty: an image copied with Command+Control+Shift+4
+# earlier in the day sits there for hours, and pasting it instead of the
+# screenshot just taken is exactly the wrong answer.
+state["pasteboard"] = Pasteboard(png=b"stale-clipboard")
+jd.clipboard_touched_at(state["pasteboard"], now=time.time() - 600)
+os.utime(shot_path, (time.time() + 2, time.time() + 2))
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+r.check(written(win.tv.text) == shot_path,
+        "a screenshot taken since beats what has been on the clipboard for ten"
+        " minutes", repr(win.tv.text))
+
+# And the other way round: copy something now and that is what you meant.
+os.utime(shot_path, (time.time() - 30, time.time() - 30))
+state["pasteboard"] = Pasteboard(png=b"copied-just-now")
+win.tv.text, win.tv.caret = "", 0
+win.tv.paste_(None)
+r.check(open(written(win.tv.text), "rb").read() == b"copied-just-now",
+        "while a fresh copy beats a screenshot from half a minute ago",
+        repr(win.tv.text))
 
 r.check(jd.image_insert_text(["/a.png"], True) == '"/a.png"\n',
         "at the start of a line the path needs no leading newline")

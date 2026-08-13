@@ -360,9 +360,11 @@ copied. Paths are written quoted, one per line, so a name with spaces is not
 read as several words.
 
 A screenshot taken with the shortcut that writes a file instead of copying
-(macOS `Cmd+Shift+4`, and most Linux desktops) leaves the clipboard empty. In
+(macOS `Cmd+Shift+4`, and most Linux desktops) never reaches the clipboard. In
 that case ccdo looks for the newest screenshot from the last two minutes and
-attaches that. `screenshot_paste_seconds` sets the window (`0` turns it off)
+attaches that. On macOS it goes by whichever is newer rather than by whether
+the clipboard is empty — an image copied earlier in the day would otherwise
+win over the screenshot just taken. `screenshot_paste_seconds` sets the window (`0` turns it off)
 and `screenshot_dir` overrides where it looks.
 
 Keeping images as paths is what lets the queue, the history and the drop files
