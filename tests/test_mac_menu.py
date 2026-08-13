@@ -495,30 +495,26 @@ r.check(not jd._MAC_WINDOWS, "closing the window unregisters it")
 
 win = open_quick_note()
 
-# What a screenshot actually is: an NSImage on the pasteboard, TIFF inside.
-state["pasteboard"] = Pasteboard(images=[Image(b"shot")])
+# A screenshot is on the pasteboard as PNG already.
+state["pasteboard"] = Pasteboard(png=b"shot")
 win.tv.type("look at this")
 win.tv.paste_(None)
 saved = win.tv.text.split("\n")[1]
 r.check(win.tv.text.startswith("look at this\n"),
         "a path pasted mid-line starts on a line of its own", repr(win.tv.text))
-r.check(os.path.isfile(saved) and open(saved, "rb").read() == b"png-of-shot",
-        "an image of any flavour is read through NSImage and saved as PNG", saved)
+r.check(os.path.isfile(saved) and open(saved, "rb").read() == b"shot",
+        "PNG bytes go to disk as they are, with no re-encoding", saved)
 r.check(saved.startswith(jd.IMAGES_DIR), "and lands in the images folder", saved)
 
+# Anything else — JPEG, HEIC, an image dragged out of Preview — is read
+# through NSImage, which takes every flavour, and converted.
 state["pasteboard"] = Pasteboard(images=[Image(b"one"), Image(b"two")])
 win.tv.text, win.tv.caret = "", 0
 win.tv.paste_(None)
-r.check(len([l for l in win.tv.text.splitlines() if l]) == 2,
-        "two images take a line each", repr(win.tv.text))
-
-# NSImage reads everything worth pasting, so this only runs when it does not.
-state["pasteboard"] = Pasteboard(png=b"raw-png")
-win.tv.text, win.tv.caret = "", 0
-win.tv.paste_(None)
-raw = win.tv.text.strip()
-r.check(os.path.isfile(raw) and open(raw, "rb").read() == b"raw-png",
-        "raw PNG data is still a fallback", raw)
+lines_out = [l for l in win.tv.text.splitlines() if l]
+r.check(len(lines_out) == 2, "two images take a line each", repr(win.tv.text))
+r.check(open(lines_out[0], "rb").read() == b"png-of-one",
+        "and each is converted to PNG on the way in", lines_out[0])
 
 state["pasteboard"] = Pasteboard(tiff=b"raw-tiff")
 win.tv.text, win.tv.caret = "", 0

@@ -2754,25 +2754,26 @@ def images_from_pasteboard(pb):
         return out
 
     blobs = []
-    for image in pb.readObjectsForClasses_options_([NSImage], None) or []:
-        data = png_data_from_image(image)
-        if data is not None:
-            blobs.append(data)
+    # A screenshot is already on the pasteboard as PNG; those bytes go to disk
+    # as they are rather than through a decode and a re-encode.
+    data = pb.dataForType_(getattr(AppKit, "NSPasteboardTypePNG", "public.png"))
+    if data is not None:
+        blobs.append(data)
     if not blobs:
-        # A last resort for anything NSImage would not read.
-        for kind in (getattr(AppKit, "NSPasteboardTypePNG", "public.png"),
-                     getattr(AppKit, "NSPasteboardTypeTIFF", "public.tiff")):
-            data = pb.dataForType_(kind)
-            if data is None:
-                continue
-            if kind.endswith("tiff"):
-                from AppKit import NSBitmapImageRep
-                rep = NSBitmapImageRep.imageRepWithData_(data)
-                data = (rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
-                        if rep is not None else None)
+        for image in pb.readObjectsForClasses_options_([NSImage], None) or []:
+            data = png_data_from_image(image)
             if data is not None:
                 blobs.append(data)
-                break
+    if not blobs:
+        # A last resort for anything NSImage would not read either.
+        from AppKit import NSBitmapImageRep
+        data = pb.dataForType_(getattr(AppKit, "NSPasteboardTypeTIFF",
+                                       "public.tiff"))
+        rep = NSBitmapImageRep.imageRepWithData_(data) if data else None
+        if rep is not None:
+            data = rep.representationUsingType_properties_(PNG_FILE_TYPE, {})
+            if data is not None:
+                blobs.append(data)
 
     for data in blobs:
         path = new_image_path()
