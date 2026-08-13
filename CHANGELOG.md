@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.25] - 2026-08-13
+
+### Fixed
+
+- **macos:** paste the newest screenshot, not whatever the clipboard still holds (514c0d6)
 ## [1.0.24] - 2026-08-13
 
 ### Added
