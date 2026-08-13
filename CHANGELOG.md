@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.22] - 2026-08-13
+
+### Fixed
+
+- **macos:** answer Command+V in the note window (4bf177c)
 ## [1.0.21] - 2026-08-13
 
 ### Performance
