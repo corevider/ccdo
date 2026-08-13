@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.24] - 2026-08-13
+
+### Added
+
+- **notes:** drop files on the Linux note box, and paste a screenshot taken to file (1bd1637)
 ## [1.0.23] - 2026-08-13
 
 ### Added
