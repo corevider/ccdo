@@ -377,9 +377,11 @@ def run_app():
 import json                                                       # noqa: E402
 NEEDLE = "ccdo" + "-matches-" + "nothing"
 jd.ensure_dirs()
+SHOTS = os.path.join(jd.DATA_DIR, "shots")
+os.makedirs(SHOTS, exist_ok=True)
 jd.atomic_write(jd.CONFIG_PATH, json.dumps(
     {"process_match": [NEEDLE], "pane_match": [NEEDLE],
-     "check_updates": False}) + "\n")
+     "check_updates": False, "screenshot_dir": SHOTS}) + "\n")
 
 store = jd.Store(CFG)
 for t in store.all():
@@ -594,6 +596,25 @@ r.check(win.tv.performKeyEquivalent_(key("v", 0)) is False,
         "a bare V is just a letter")
 r.check(win.tv.performKeyEquivalent_(key("v", CMD | CTRL)) is False,
         "and Control+Command+V is not ours either")
+
+
+# Command+Shift+4 writes a file and leaves the clipboard alone, so a paste
+# straight after taking a screenshot has nothing to work with.
+state["pasteboard"] = Pasteboard()
+shot_path = os.path.join(SHOTS, "Screen Shot at 17.20.45.png")
+open(shot_path, "wb").write(b"from-the-desktop")
+win.tv.text, win.tv.caret, win.tv.plain_pastes = "", 0, 0
+win.tv.paste_(None)
+r.check(written(win.tv.text) == shot_path,
+        "with an empty clipboard, a screenshot just taken is pasted instead",
+        repr(win.tv.text))
+r.check(win.tv.plain_pastes == 0, "and it does not also paste as text")
+
+os.utime(shot_path, (1, 1))
+win.tv.text, win.tv.caret, win.tv.plain_pastes = "", 0, 0
+win.tv.paste_(None)
+r.check(not win.tv.text and win.tv.plain_pastes == 1,
+        "an old one is left alone — a paste must not surprise you")
 
 r.check(jd.image_insert_text(["/a.png"], True) == '"/a.png"\n',
         "at the start of a line the path needs no leading newline")

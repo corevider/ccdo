@@ -346,13 +346,24 @@ without `--target` lands there). Sending from it reaches tmux only if there is
 exactly one live session; otherwise it falls back to `xdotool` or the queue
 file. The `⇄` button moves a note to a session.
 
-### Pasting an image
+### Attaching an image or a file
 
-You can paste a screenshot into the note box with **Ctrl+V**. When the
-clipboard carries an image rather than text, ccdo writes it to
+Paste a screenshot into the note box with **Ctrl+V** (Command+V on macOS).
+When the clipboard carries an image rather than text, ccdo writes it to
 `~/.local/share/ccdo/images/` as PNG and puts **its path** into the note; when
-the task is handed over, Claude Code reads that path and sees the image. Image
-files copied from a file manager (`file://` URIs) are added the same way.
+the task is handed over, Claude Code reads that path and sees the image.
+
+Dropping a file on the note box does the same, and not only for images: a PDF,
+a log, a spreadsheet all go in as paths, because Claude Code opens the path it
+is given. A file that is already on disk keeps its own path rather than being
+copied. Paths are written quoted, one per line, so a name with spaces is not
+read as several words.
+
+A screenshot taken with the shortcut that writes a file instead of copying
+(macOS `Cmd+Shift+4`, and most Linux desktops) leaves the clipboard empty. In
+that case ccdo looks for the newest screenshot from the last two minutes and
+attaches that. `screenshot_paste_seconds` sets the window (`0` turns it off)
+and `screenshot_dir` overrides where it looks.
 
 Keeping images as paths is what lets the queue, the history and the drop files
 stay plain text — no binary is embedded anywhere.
@@ -672,7 +683,7 @@ with a line beside it saying what the current mode does.
 | `Enter` | add the note to this session's queue |
 | `Shift+Enter` | newline |
 | `Ctrl+Enter` | add **and** send right away |
-| `Ctrl+V` | add the screenshot on the clipboard (its path is written) |
+| `Ctrl+V` | attach the clipboard image, or the screenshot you just took |
 | `Ctrl+1..9` / `Ctrl+Tab` | switch tabs |
 | `Esc` | close |
 

@@ -86,7 +86,7 @@ HISTORY_UI_LIMIT = 50        # newest records shown in the history section
 
 DEFAULT_CONFIG = {
     "delivery": "auto",              # auto | tmux | xdotool | file
-    "inline_max_chars": 8000,        # bundan uzun metin dosyaya dusurulur
+    "inline_max_chars": 8000,        # longer text is dropped into a file
     "auto_enter": True,
     "enter_delay": 0.25,
     "send_prefix": "",
@@ -102,6 +102,8 @@ DEFAULT_CONFIG = {
     "skip_advance_on_question": True,  # hold back if Claude ended with a question
     "question_patterns": [],         # extra question patterns (regex)
     "check_updates": True,           # look for a newer release once a day
+    "screenshot_paste_seconds": 120,  # paste a just-taken screenshot file; 0 = off
+    "screenshot_dir": "",            # where those land; empty = ask the desktop
     "language": "auto",              # auto = the desktop language; en, tr, ...
     "use_claude_session_name": True, # take the tab name from Claude Code
     "use_claude_theme_color": True,  # take the color from the Claude Code theme
@@ -547,16 +549,75 @@ def image_insert_text(paths, at_line_start):
     return ("" if at_line_start else "\n") + lines + "\n"
 
 
-def image_paths_from_uris(uris):
-    """Pick the existing image files out of a list of file:// URIs."""
+def file_paths_from_uris(uris):
+    """Pick the existing files out of a list of file:// URIs.
+
+    Any file, not only images: Claude Code opens the path it is given, so a
+    PDF or a log dropped into a note is worth as much as a screenshot.
+    """
     out = []
     for uri in uris or []:
         if not uri.startswith("file://"):
             continue
         path = urllib.parse.unquote(urllib.parse.urlparse(uri).path)
-        if path.lower().endswith(IMAGE_SUFFIXES) and os.path.isfile(path):
+        if os.path.isfile(path):
             out.append(path)
     return out
+
+
+def screenshot_dir(cfg=None):
+    """Where the desktop drops a screenshot file."""
+    told = os.path.expanduser((cfg or {}).get("screenshot_dir") or "")
+    if told:
+        return told
+    if IS_MAC:
+        rc, out, __ = run_cmd(["defaults", "read", "com.apple.screencapture",
+                               "location"])
+        if rc == 0 and out.strip():
+            path = os.path.expanduser(out.strip())
+            if os.path.isdir(path):
+                return path
+        return os.path.join(HOME, "Desktop")
+    pictures = os.environ.get("XDG_PICTURES_DIR") or os.path.join(HOME, "Pictures")
+    shots = os.path.join(pictures, "Screenshots")
+    return shots if os.path.isdir(shots) else pictures
+
+
+def recent_screenshot(within=120, folder=None, now=None):
+    """The newest screenshot taken in the last `within` seconds, if any.
+
+    Command+Shift+4 writes a file and leaves the clipboard alone — only the
+    Control variant copies — so pasting straight after taking one finds an
+    empty clipboard. Rather than explain that, we go and look for the file.
+
+    The window is what keeps this from being a surprise: only a shot taken
+    moments ago counts, so a paste never reaches for something you have
+    forgotten about.
+    """
+    if within <= 0:
+        return None
+    folder = folder or screenshot_dir()
+    now = now if now is not None else time.time()
+    best, best_age = None, None
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    for name in names:
+        if name.startswith(".") or not name.lower().endswith(IMAGE_SUFFIXES):
+            continue
+        path = os.path.join(folder, name)
+        try:
+            age = now - os.path.getmtime(path)
+        except OSError:
+            continue
+        # A negative age is a clock that disagrees with the filesystem, not a
+        # file from the future; a small tolerance keeps those usable.
+        if age > within or age < -5:
+            continue
+        if best_age is None or age < best_age:
+            best, best_age = path, age
+    return best
 
 
 class FileLock:
@@ -2965,6 +3026,12 @@ def start_mac_gui():
                 sys.stderr.write("[ccdo] could not save the pasted image: %s\n" % e)
                 paths = []
             if not paths:
+                # Command+Shift+4 wrote a file and left the clipboard alone.
+                shot = recent_screenshot(
+                    int(cfg.get("screenshot_paste_seconds", 120)),
+                    screenshot_dir(cfg))
+                paths = [shot] if shot else []
+            if not paths:
                 self.pasteAsPlainText_(sender)
                 return
             text = image_insert_text(paths, self.ccdoAtLineStart())
@@ -3736,13 +3803,36 @@ def start_gui(use_statusicon=False):
                     sys.stderr.write("ccdo: could not save image: %s\n" % e)
                     return
             elif clip.wait_is_uris_available():
-                paths = image_paths_from_uris(clip.wait_for_uris())
+                paths = file_paths_from_uris(clip.wait_for_uris())
+            if not paths:
+                shot = recent_screenshot(
+                    int(cfg.get("screenshot_paste_seconds", 120)),
+                    screenshot_dir(cfg))
+                paths = [shot] if shot else []
             if not paths:
                 return
             insert_image_paths(widget, paths)
             widget.emit_stop_by_name("paste-clipboard")
 
         tv.connect("paste-clipboard", on_paste)
+
+    def attach_file_drop(tv):
+        """Take a file dropped on the note and write its path into it.
+
+        A text view drops the URI in as text of its own accord, which is not
+        the same thing: the path has to be quoted and on a line of its own,
+        the way a pasted one is.
+        """
+        def on_drop(widget, context, x, y, data, info, time_):
+            paths = file_paths_from_uris(data.get_uris())
+            if not paths:
+                return
+            insert_image_paths(widget, paths)
+            Gtk.drag_finish(context, True, False, time_)
+            widget.emit_stop_by_name("drag-data-received")
+
+        tv.drag_dest_add_uri_targets()
+        tv.connect("drag-data-received", on_drop)
 
     class SessionPage(Gtk.Box):
         """Note box and queue for a single Claude Code session."""
@@ -3815,6 +3905,7 @@ def start_gui(use_statusicon=False):
             self.tv.get_style_context().add_class("jd-input")
             self.tv.connect("key-press-event", self.on_tv_key)
             attach_image_paste(self.tv)
+            attach_file_drop(self.tv)
             sw = Gtk.ScrolledWindow()
             sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
             sw.set_size_request(-1, 110)
@@ -4319,6 +4410,7 @@ def start_gui(use_statusicon=False):
             self.tv.get_buffer().set_text(task["text"])
             self.tv.connect("key-press-event", self.on_key)
             attach_image_paste(self.tv)
+            attach_file_drop(self.tv)
             sw = Gtk.ScrolledWindow()
             sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
             sw.set_size_request(-1, 170)
@@ -4552,6 +4644,7 @@ def start_gui(use_statusicon=False):
             self.tv.get_style_context().add_class("jd-input")
             self.tv.connect("key-press-event", self.on_key)
             attach_image_paste(self.tv)
+            attach_file_drop(self.tv)
             sw = Gtk.ScrolledWindow()
             sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
             sw.set_size_request(-1, 92)

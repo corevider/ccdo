@@ -80,11 +80,50 @@ with tempfile.TemporaryDirectory() as tmp:
             "file://" + txt,
             "file:///no/such/file.png",
             "https://example.com/a.png"]
-    got = jd.image_paths_from_uris(uris)
-    r.check(got == [png], "only images are picked out of a clipboard URI list",
-            str(got))
+    got = jd.file_paths_from_uris(uris)
+    r.check(got == [png, txt],
+            "every file is picked out of a URI list, image or not", str(got))
+    r.check("/no/such/file.png" not in got and not any("example.com" in g
+                                                      for g in got),
+            "what does not exist as a file is left out", str(got))
 
-r.check(jd.image_paths_from_uris(None) == [], "an empty URI list causes no trouble")
+r.check(jd.file_paths_from_uris(None) == [], "an empty URI list causes no trouble")
+
+
+# ----------------------------------------------------------- screenshot file
+
+# Command+Shift+4 writes a file and leaves the clipboard alone, so a paste
+# right after taking a screenshot has to go and find it.
+with tempfile.TemporaryDirectory() as tmp:
+    now = 1_000_000.0
+
+    def shot(name, age):
+        path = os.path.join(tmp, name)
+        open(path, "wb").close()
+        os.utime(path, (now - age, now - age))
+        return path
+
+    old_shot = shot("old.png", 600)
+    r.check(jd.recent_screenshot(120, tmp, now) is None,
+            "a screenshot from ten minutes ago is not what you meant to paste")
+
+    fresh = shot("fresh.png", 5)
+    r.check(jd.recent_screenshot(120, tmp, now) == fresh,
+            "one taken moments ago is")
+
+    newer = shot("newer.png", 1)
+    r.check(jd.recent_screenshot(120, tmp, now) == newer,
+            "and the newest of several wins")
+
+    shot(".hidden.png", 1)
+    shot("notes.txt", 1)
+    r.check(jd.recent_screenshot(120, tmp, now) == newer,
+            "hidden files and non-images are not screenshots")
+
+    r.check(jd.recent_screenshot(0, tmp, now) is None,
+            "zero seconds turns the whole thing off")
+    r.check(jd.recent_screenshot(120, os.path.join(tmp, "gone"), now) is None,
+            "a folder that is not there is not an error")
 
 
 # ----------------------------------------------------------- tmux delivery
