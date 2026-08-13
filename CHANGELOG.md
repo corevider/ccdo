@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.21] - 2026-08-13
+
+### Performance
+
+- **macos:** keep the pasteboard's PNG bytes instead of re-encoding them (20a3f91)
 ## [1.0.20] - 2026-08-13
 
 ### Fixed
