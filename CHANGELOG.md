@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.28] - 2026-08-14
+
+### Fixed
+
+- **macos:** ask macOS for the temporary folder instead of trusting TMPDIR (9feeeca)
 ## [1.0.27] - 2026-08-14
 
 ### Fixed
