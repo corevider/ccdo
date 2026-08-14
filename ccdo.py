@@ -585,6 +585,20 @@ def clipboard_touched_at(pb, now=None):
     return _CLIPBOARD_SEEN["at"]
 
 
+def user_temp_dir():
+    """The per-user temporary folder, the one macOS itself parks things in.
+
+    TMPDIR is not enough: a launchd agent can be started without it, and then
+    the fallback is /tmp — which is not where the screenshot tool writes.
+    macOS answers this properly through confstr.
+    """
+    try:
+        path = os.confstr("CS_DARWIN_USER_TEMP_DIR")
+    except (AttributeError, ValueError, OSError):
+        path = None
+    return path or os.environ.get("TMPDIR") or tempfile.gettempdir()
+
+
 def pending_screenshot(within=120, now=None):
     """A screenshot macOS has taken but not yet moved to its folder.
 
@@ -598,11 +612,14 @@ def pending_screenshot(within=120, now=None):
     """
     if within <= 0:
         return None
-    base = os.environ.get("TMPDIR") or tempfile.gettempdir()
-    pattern = os.path.join(base, "TemporaryItems", "NSIRD_screencaptureui_*", "*")
+    base = os.path.join(user_temp_dir(), "TemporaryItems")
+    # The folder under TemporaryItems is named after whatever wrote it
+    # (NSIRD_screencaptureui_xxxx today), so match on what it holds instead.
+    candidates = glob.glob(os.path.join(base, "*")) + \
+        glob.glob(os.path.join(base, "*", "*"))
     now = now if now is not None else time.time()
     best, best_age = None, None
-    for path in glob.glob(pattern):
+    for path in candidates:
         if not path.lower().endswith(IMAGE_SUFFIXES):
             continue
         try:
@@ -3037,9 +3054,23 @@ def paste_check():
         for age, name in sorted(aged)[:5]:
             print("   %-40s %d seconds old" % (name[:40], age))
     probe("within %ds" % within, lambda: recent_screenshot(within, folder) or "(none)")
-    print("pending folder:        %s"
-          % os.path.join(os.environ.get("TMPDIR") or tempfile.gettempdir(),
-                         "TemporaryItems"))
+    pending_dir = os.path.join(user_temp_dir(), "TemporaryItems")
+    print("pending folder:        %s" % pending_dir)
+    print("   TMPDIR is %s" % (os.environ.get("TMPDIR") or "(not set)"))
+    try:
+        entries = os.listdir(pending_dir)
+    except OSError as e:
+        entries = []
+        print("   cannot be read: %s" % e)
+    for entry in entries[:8]:
+        inner = os.path.join(pending_dir, entry)
+        if os.path.isdir(inner):
+            try:
+                print("   %-30s holds %s" % (entry[:30], os.listdir(inner)[:4]))
+                continue
+            except OSError:
+                pass
+        print("   %s" % entry[:60])
     probe("still on its way", lambda: pending_screenshot(within) or "(none)")
     probe("what a paste takes",
           lambda: screenshot_to_attach(cfg, clipboard_touched_at(pb))

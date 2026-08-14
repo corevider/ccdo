@@ -136,8 +136,18 @@ with tempfile.TemporaryDirectory() as tmp:
     old_tmpdir = os.environ.get("TMPDIR")
     os.environ["TMPDIR"] = tmp
     try:
+        r.check(jd.user_temp_dir() == tmp,
+                "without confstr — anywhere but macOS — TMPDIR is the answer",
+                jd.user_temp_dir())
         r.check(jd.pending_screenshot(120, now) is None,
                 "an empty temporary folder is not a screenshot")
+
+        loose = os.path.join(tmp, "TemporaryItems", "loose.png")
+        open(loose, "wb").write(b"not-in-a-subfolder")
+        os.utime(loose, (now - 1, now - 1))
+        r.check(jd.pending_screenshot(120, now) == loose,
+                "a shot sitting directly in TemporaryItems counts too", loose)
+        os.remove(loose)
 
         waiting = os.path.join(pending_dir, "Ekran Resmi 2026-08-13 19.36.40.png")
         open(waiting, "wb").write(b"still-in-the-thumbnail")
