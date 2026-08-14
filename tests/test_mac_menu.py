@@ -625,6 +625,49 @@ win.tv.paste_(None)
 r.check(not win.tv.text and win.tv.plain_pastes == 1,
         "an old one is left alone — a paste must not surprise you")
 
+# Pressing Command+V while the floating thumbnail is still up: the file does
+# not exist yet, and the clipboard holds something else entirely.
+tick = state["timer"][1]
+state["pasteboard"] = Pasteboard(png=b"whatever-was-copied-before")
+os.utime(shot_path, (1, 1))
+in_flight = [True]
+real_in_flight = jd.screenshot_in_flight
+jd.screenshot_in_flight = lambda: in_flight[0]
+try:
+    win.tv.text, win.tv.caret, win.tv.plain_pastes = "", 0, 0
+    win.tv.paste_(None)
+    r.check(not win.tv.text and win.tv.plain_pastes == 0,
+            "nothing is pasted while a screenshot is on its way", repr(win.tv.text))
+    r.check(win.awaiting and "waiting" in win.win.title,
+            "the window says it is waiting", win.win.title)
+
+    tick.ccdoTick_(None)
+    r.check(win.awaiting and not win.tv.text,
+            "and keeps waiting while the file is not there yet")
+
+    # The thumbnail fades and the file lands.
+    in_flight[0] = False
+    open(shot_path, "wb").write(b"the-one-just-taken")
+    os.utime(shot_path, (time.time(), time.time()))
+    tick.ccdoTick_(None)
+    r.check(open(written(win.tv.text), "rb").read() == b"the-one-just-taken",
+            "when it lands, it goes into the note by itself", repr(win.tv.text))
+    r.check(not win.awaiting and win.win.title == win.title,
+            "and the title goes back", win.win.title)
+
+    # Nothing ever arrives: the wait has to end on its own.
+    win.tv.text, win.tv.caret = "", 0
+    in_flight[0] = True
+    os.utime(shot_path, (1, 1))          # nothing new to find any more
+    win.tv.paste_(None)
+    win.awaiting = time.time() - 300
+    tick.ccdoTick_(None)
+    r.check(not win.awaiting and not win.tv.text,
+            "a shot that never lands is given up on", repr(win.tv.text))
+finally:
+    jd.screenshot_in_flight = real_in_flight
+
+
 # The clipboard is rarely empty: an image copied with Command+Control+Shift+4
 # earlier in the day sits there for hours, and pasting it instead of the
 # screenshot just taken is exactly the wrong answer.

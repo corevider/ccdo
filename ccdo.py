@@ -585,6 +585,21 @@ def clipboard_touched_at(pb, now=None):
     return _CLIPBOARD_SEEN["at"]
 
 
+def screenshot_in_flight():
+    """Is a screenshot taken but not yet written out?
+
+    While the floating thumbnail is on screen the shot belongs to
+    screencaptureui, which is still running and still holds the file in a
+    folder macOS does not let us read. So we cannot fetch it — but we can tell
+    that it is coming, which is enough to wait rather than paste something
+    else.
+    """
+    if not IS_MAC:
+        return False
+    rc, out, __ = run_cmd(["pgrep", "-x", "screencaptureui"], timeout=3)
+    return rc == 0 and bool(out.strip())
+
+
 def user_temp_dir():
     """The per-user temporary folder, the one macOS itself parks things in.
 
@@ -3072,8 +3087,13 @@ def paste_check():
                 pass
         print("   %s" % entry[:60])
     probe("still on its way", lambda: pending_screenshot(within) or "(none)")
+    probe("a shot in flight", lambda: "yes, the thumbnail still has it"
+          if screenshot_in_flight() else "no")
+    # As a paste decides it: the clipboard only counts when it holds something.
+    has_clipboard = bool(pb.pasteboardItems())
     probe("what a paste takes",
-          lambda: screenshot_to_attach(cfg, clipboard_touched_at(pb))
+          lambda: screenshot_to_attach(
+              cfg, clipboard_touched_at(pb) if has_clipboard else 0)
           or "(none — the clipboard wins)")
 
     try:
@@ -3130,6 +3150,7 @@ def start_mac_gui():
     CTRL_KEY = const("NSEventModifierFlagControl", 1 << 18)
     ALT_KEY = const("NSEventModifierFlagOption", 1 << 19)
     HUGE = 1.0e7
+    SHOT_WAIT = 20.0              # how long a note waits for a screenshot
 
     cfg = load_config()
     load_language(cfg.get("language"))
@@ -3159,6 +3180,8 @@ def start_mac_gui():
             try:
                 # Cheap, and it is the only way to date the clipboard.
                 clipboard_touched_at(NSPasteboard.generalPasteboard())
+                for window in list(_MAC_WINDOWS):
+                    window.check_screenshot()
                 app.refresh()
             except Exception as e:
                 sys.stderr.write("[ccdo] refresh error: %s\n" % e)
@@ -3199,6 +3222,14 @@ def start_mac_gui():
                 shot = None
             if shot:
                 paths = [shot]
+            if not shot and screenshot_in_flight():
+                # The shortcut was pressed a moment ago and the thumbnail is
+                # still holding the file. Whatever is on the clipboard is not
+                # what was meant; wait for the real one.
+                window = next((w for w in _MAC_WINDOWS if w.tv is self), None)
+                if window is not None:
+                    window.await_screenshot()
+                    return
             if not paths:
                 self.pasteAsPlainText_(sender)
                 return
@@ -3290,8 +3321,10 @@ def start_mac_gui():
 
         def __init__(self, target, title):
             self.target = target
+            self.title = title
             self.tags = []
             self.closed = False
+            self.awaiting = None
 
             self.choices = [(None, _("Inbox"))]
             for sess in app.sessions:
@@ -3389,6 +3422,30 @@ def start_mac_gui():
             self.dismiss()
             self.win.close()
             app.refresh(force=True)
+
+        def await_screenshot(self):
+            """Wait for a screenshot that is on its way, and say so meanwhile."""
+            self.awaiting = time.time()
+            self.win.setTitle_("%s — %s" % (self.title, _("waiting for the screenshot")))
+
+        def check_screenshot(self):
+            """Called on the tick: has the shot we are waiting for landed?"""
+            if not self.awaiting:
+                return
+            shot = None
+            try:
+                shot = screenshot_to_attach(cfg, self.awaiting)
+            except Exception as e:
+                sys.stderr.write("[ccdo] screenshot lookup failed: %s\n" % e)
+            if shot is None and time.time() - self.awaiting < SHOT_WAIT:
+                return
+            self.awaiting = None
+            self.win.setTitle_(self.title)
+            if shot is None:
+                return
+            self.tv.insertText_replacementRange_(
+                image_insert_text([shot], self.tv.ccdoAtLineStart()),
+                self.tv.selectedRange())
 
         def dismiss(self):
             """Give the tags back. Closing can arrive twice — by button and by
