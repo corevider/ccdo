@@ -25,6 +25,7 @@ Usage:
     ccdo update [--apply]       # print the update command, or run it
 """
 
+import glob
 import json
 import os
 import re
@@ -584,15 +585,70 @@ def clipboard_touched_at(pb, now=None):
     return _CLIPBOARD_SEEN["at"]
 
 
-def newer_screenshot(clipboard_at, within=120, folder=None, now=None):
-    """A screenshot file taken after the clipboard was last filled, if any."""
-    shot = recent_screenshot(within, folder, now)
-    if shot is None:
+def pending_screenshot(within=120, now=None):
+    """A screenshot macOS has taken but not yet moved to its folder.
+
+    With the floating thumbnail on — the default — the file only reaches the
+    Desktop once the thumbnail fades a few seconds later; until then it waits
+    in a temporary folder, and a paste straight after the shortcut finds
+    nothing at all. Its timestamp is the moment of capture either way.
+
+    Whoever takes this must copy it: macOS deletes it as it moves it out, so a
+    note pointing at where it is now would be broken within seconds.
+    """
+    if within <= 0:
         return None
-    try:
-        return shot if os.path.getmtime(shot) > clipboard_at else None
-    except OSError:
+    base = os.environ.get("TMPDIR") or tempfile.gettempdir()
+    pattern = os.path.join(base, "TemporaryItems", "NSIRD_screencaptureui_*", "*")
+    now = now if now is not None else time.time()
+    best, best_age = None, None
+    for path in glob.glob(pattern):
+        if not path.lower().endswith(IMAGE_SUFFIXES):
+            continue
+        try:
+            age = now - os.path.getmtime(path)
+        except OSError:
+            continue
+        if age > within or age < -5:
+            continue
+        if best_age is None or age < best_age:
+            best, best_age = path, age
+    return best
+
+
+def keep_screenshot(path):
+    """Copy a screenshot next to the queue and return the copy."""
+    dest = new_image_path()
+    shutil.copyfile(path, dest)
+    return dest
+
+
+def screenshot_to_attach(cfg, clipboard_at=0, now=None):
+    """The screenshot worth pasting, or None if the clipboard has the better one.
+
+    Both places are asked — the folder the desktop writes to and the one macOS
+    parks a shot in while the thumbnail is up — because between the shortcut
+    and the file landing there are a few seconds in which only the second has
+    it.
+    """
+    within = int(cfg.get("screenshot_paste_seconds", 120))
+    if within <= 0:
         return None
+    shot = recent_screenshot(within, screenshot_dir(cfg), now)
+    if shot is not None:
+        try:
+            if os.path.getmtime(shot) > clipboard_at:
+                return shot
+        except OSError:
+            pass
+    pending = pending_screenshot(within, now)
+    if pending is not None:
+        try:
+            if os.path.getmtime(pending) > clipboard_at:
+                return keep_screenshot(pending)
+        except OSError:
+            pass
+    return None
 
 
 def screenshot_dir(cfg=None):
@@ -2970,16 +3026,23 @@ def paste_check():
                  if not n.startswith(".") and n.lower().endswith(IMAGE_SUFFIXES)]
         print("   %d image(s), %d entries" % (len(shots), len(names)))
         now = time.time()
-        for name in sorted(shots)[-5:]:
+        aged = []
+        for name in shots:
             try:
-                age = now - os.path.getmtime(os.path.join(folder, name))
+                aged.append((now - os.path.getmtime(os.path.join(folder, name)),
+                             name))
             except OSError as e:
-                print("   %-40s unreadable (%s)" % (name, e))
-                continue
+                print("   %-40s unreadable (%s)" % (name[:40], e))
+        # By age, not by name: the point of the list is which one is newest.
+        for age, name in sorted(aged)[:5]:
             print("   %-40s %d seconds old" % (name[:40], age))
     probe("within %ds" % within, lambda: recent_screenshot(within, folder) or "(none)")
-    probe("newer than clipboard",
-          lambda: newer_screenshot(clipboard_touched_at(pb), within, folder)
+    print("pending folder:        %s"
+          % os.path.join(os.environ.get("TMPDIR") or tempfile.gettempdir(),
+                         "TemporaryItems"))
+    probe("still on its way", lambda: pending_screenshot(within) or "(none)")
+    probe("what a paste takes",
+          lambda: screenshot_to_attach(cfg, clipboard_touched_at(pb))
           or "(none — the clipboard wins)")
 
     try:
@@ -3098,10 +3161,11 @@ def start_mac_gui():
             # Command+Shift+4 writes a file and leaves the clipboard alone, so
             # what is on the clipboard may be an older screenshot that is
             # nobody's idea of what "paste" means now. Newest wins.
-            shot = newer_screenshot(
-                clipboard_at if paths else 0,
-                int(cfg.get("screenshot_paste_seconds", 120)),
-                screenshot_dir(cfg))
+            try:
+                shot = screenshot_to_attach(cfg, clipboard_at if paths else 0)
+            except Exception as e:
+                sys.stderr.write("[ccdo] screenshot lookup failed: %s\n" % e)
+                shot = None
             if shot:
                 paths = [shot]
             if not paths:
@@ -3878,9 +3942,7 @@ def start_gui(use_statusicon=False):
             elif clip.wait_is_uris_available():
                 paths = file_paths_from_uris(clip.wait_for_uris())
             if not paths:
-                shot = recent_screenshot(
-                    int(cfg.get("screenshot_paste_seconds", 120)),
-                    screenshot_dir(cfg))
+                shot = screenshot_to_attach(cfg)
                 paths = [shot] if shot else []
             if not paths:
                 return

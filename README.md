@@ -364,7 +364,10 @@ A screenshot taken with the shortcut that writes a file instead of copying
 that case ccdo looks for the newest screenshot from the last two minutes and
 attaches that. On macOS it goes by whichever is newer rather than by whether
 the clipboard is empty — an image copied earlier in the day would otherwise
-win over the screenshot just taken. `screenshot_paste_seconds` sets the window (`0` turns it off)
+win over the screenshot just taken — and it also looks where macOS parks a
+shot while the floating thumbnail is up, since the file only reaches the
+Desktop a few seconds later. One parked there is copied rather than pointed
+at, because macOS deletes it as it moves it out. `screenshot_paste_seconds` sets the window (`0` turns it off)
 and `screenshot_dir` overrides where it looks.
 
 Keeping images as paths is what lets the queue, the history and the drop files

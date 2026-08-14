@@ -126,6 +126,50 @@ with tempfile.TemporaryDirectory() as tmp:
             "a folder that is not there is not an error")
 
 
+# While the floating thumbnail is up, macOS has not written the file out yet:
+# it waits in a temporary folder, which is exactly where a paste one second
+# after the shortcut has to look.
+with tempfile.TemporaryDirectory() as tmp:
+    now = 1_000_000.0
+    pending_dir = os.path.join(tmp, "TemporaryItems", "NSIRD_screencaptureui_ab12")
+    os.makedirs(pending_dir)
+    old_tmpdir = os.environ.get("TMPDIR")
+    os.environ["TMPDIR"] = tmp
+    try:
+        r.check(jd.pending_screenshot(120, now) is None,
+                "an empty temporary folder is not a screenshot")
+
+        waiting = os.path.join(pending_dir, "Ekran Resmi 2026-08-13 19.36.40.png")
+        open(waiting, "wb").write(b"still-in-the-thumbnail")
+        os.utime(waiting, (now - 2, now - 2))
+        r.check(jd.pending_screenshot(120, now) == waiting,
+                "one taken two seconds ago is found before it lands")
+
+        # It must be copied: macOS deletes it as it moves it to the Desktop.
+        shots = os.path.join(tmp, "shots")
+        os.makedirs(shots)
+        cfg = dict(jd.DEFAULT_CONFIG, screenshot_dir=shots)
+        taken = jd.screenshot_to_attach(cfg, 0, now)
+        r.check(taken != waiting and open(taken, "rb").read() == b"still-in-the-thumbnail",
+                "and copied, since the original is about to be moved away", str(taken))
+
+        landed = os.path.join(shots, "Ekran Resmi 2026-08-13 19.36.40.png")
+        open(landed, "wb").write(b"on-the-desktop")
+        os.utime(landed, (now - 2, now - 2))
+        r.check(jd.screenshot_to_attach(cfg, 0, now) == landed,
+                "once it lands, that file is used as it is")
+        r.check(jd.screenshot_to_attach(cfg, now, now) is None,
+                "a clipboard filled since beats both")
+        r.check(jd.screenshot_to_attach(dict(cfg, screenshot_paste_seconds=0),
+                                        0, now) is None,
+                "and zero seconds turns the whole thing off")
+    finally:
+        if old_tmpdir is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = old_tmpdir
+
+
 # ----------------------------------------------------------- tmux delivery
 
 def probe_bytes(payload):
