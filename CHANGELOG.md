@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.27] - 2026-08-14
+
+### Fixed
+
+- **macos:** find the screenshot while the thumbnail still has it (150801b)
 ## [1.0.26] - 2026-08-13
 
 ### Added
