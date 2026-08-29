@@ -3246,6 +3246,9 @@ def start_mac_gui():
             except Exception as e:
                 sys.stderr.write("[ccdo] menu action failed: %s\n" % e)
 
+        def ccdoUpdateTick_(self, timer):
+            app.start_update_check(force=True)
+
         def ccdoTick_(self, timer):
             try:
                 # Cheap, and it is the only way to date the clipboard.
@@ -3533,6 +3536,7 @@ def start_mac_gui():
         def __init__(self):
             self.sessions = []
             self.signature = None
+            self.announced_release = None
             self.tags = []
             bar = NSStatusBar.systemStatusBar()
             self.item = bar.statusItemWithLength_(NSVariableStatusItemLength)
@@ -3677,6 +3681,28 @@ def start_mac_gui():
 
         # -- refreshing ------------------------------------------------ #
 
+        def start_update_check(self, force=False):
+            """Look for a new release on a thread.
+
+            The icon must appear at once, not after the network has had its
+            say; the 2 s tick then picks the answer up out of the cache. A
+            release is announced once per version.
+            """
+            if not cfg.get("check_updates", True):
+                return
+
+            def work():
+                try:
+                    cache = check_update(cfg, force=force)
+                except Exception:
+                    return
+                latest = cache.get("latest", "")
+                if newer_version(latest) and latest != self.announced_release:
+                    self.announced_release = latest
+                    notify(*update_notice(latest), cfg=cfg)
+
+            threading.Thread(target=work, daemon=True).start()
+
         def refresh(self, force=False):
             self.sessions = discover_sessions(cfg)
             signature = tuple(
@@ -3698,11 +3724,11 @@ def start_mac_gui():
 
     app = MenuBarApp()
     app.refresh(force=True)
-    # On its own thread: the icon should appear at once, not after the network
-    # has had its say. The timer picks the answer up out of the cache.
-    if cfg.get("check_updates", True):
-        threading.Thread(target=lambda: check_update(cfg), daemon=True).start()
-
+    # Startup honours the daily cache; the hourly timer goes past it, since
+    # a fresh cache would otherwise stand in for a real look all day.
+    app.start_update_check()
+    NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+        3600.0, dispatch, b"ccdoUpdateTick:", None, True)
     NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
         2.0, dispatch, b"ccdoTick:", None, True)
     ns_app.run()

@@ -310,7 +310,9 @@ def install_stubs(state):
     class NSTimer:
         @staticmethod
         def scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(*a):
-            state["timer"] = a
+            state.setdefault("timers", []).append(a)
+            if a[2] == b"ccdoTick:":
+                state["timer"] = a
     foundation.NSTimer = NSTimer
 
     appkit = types.ModuleType("AppKit")
@@ -628,6 +630,10 @@ r.check(not win.tv.text and win.tv.plain_pastes == 1,
 # Pressing Command+V while the floating thumbnail is still up: the file does
 # not exist yet, and the clipboard holds something else entirely.
 tick = state["timer"][1]
+hourly = [t for t in state["timers"] if t[2] == b"ccdoUpdateTick:"]
+r.check(hourly and hourly[0][0] == 3600.0 and hourly[0][4] is True,
+        "an hourly timer looks for a new release", str(hourly))
+r.check(hasattr(tick, "ccdoUpdateTick_"), "the dispatcher answers the hourly timer")
 state["pasteboard"] = Pasteboard(png=b"whatever-was-copied-before")
 os.utime(shot_path, (1, 1))
 in_flight = [True]
