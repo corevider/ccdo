@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.34] - 2026-08-30
+
+### Added
+
+- **gui:** the ideabox page explains itself (04dfbe3)
 ## [1.0.33] - 2026-08-30
 
 ### Fixed
