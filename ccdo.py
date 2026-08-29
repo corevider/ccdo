@@ -102,7 +102,7 @@ DEFAULT_CONFIG = {
     "session_stale_after": 43200,    # a record silent this long counts as dead
     "skip_advance_on_question": True,  # hold back if Claude ended with a question
     "question_patterns": [],         # extra question patterns (regex)
-    "check_updates": True,           # look for a newer release once a day
+    "check_updates": True,           # look for a newer release every hour
     "screenshot_paste_seconds": 120,  # paste a just-taken screenshot file; 0 = off
     "screenshot_dir": "",            # where those land; empty = ask the desktop
     "language": "auto",              # auto = the desktop language; en, tr, ...
@@ -298,9 +298,11 @@ def read_update_cache():
 def check_update(cfg=None, force=False, timeout=6):
     """Find out the newest version; cache the answer.
 
-    We reach the network once a day: asking on every start is both wasteful
-    and ties the working directory to a network delay. Failure is silent —
-    checking for updates must never get in the way of the actual work.
+    Left to itself it reaches the network once a day: asking on every start
+    is both wasteful and ties the working directory to a network delay. The
+    tray's hourly timer passes force, since a fresh cache would otherwise
+    stand in for a real look. Failure is silent — checking for updates must
+    never get in the way of the actual work.
     """
     if cfg is not None and not cfg.get("check_updates", True):
         return {}
@@ -334,6 +336,12 @@ def check_update(cfg=None, force=False, timeout=6):
     except OSError:
         pass
     return cache
+
+
+def update_notice(latest):
+    """Title and body of the desktop notification for a new release."""
+    return (_("ccdo %s is out (you have %s)") % (latest, VERSION),
+            _("Open the tray menu to see what changed and update."))
 
 
 def plain_markdown(text):
@@ -5132,6 +5140,7 @@ def start_gui(use_statusicon=False):
             self._positioned = False
             self._last_discover = 0.0
             self._discover_pending = False
+            self._announced_release = None
             self.menu.connect("hide", self._on_menu_hidden)
 
             if use_statusicon:
@@ -5155,8 +5164,8 @@ def start_gui(use_statusicon=False):
             self.start_update_check()
             # And keep looking. Checking only at startup meant a tray left
             # running for days never noticed a release — you had to restart it
-            # to be told. check_update rate-limits itself to once a day, so
-            # asking hourly costs nothing but a cache read.
+            # to be told. The hourly check goes past the daily cache: with it,
+            # the tray only ever re-read what it already knew.
             GLib.timeout_add_seconds(3600, self._recheck_updates)
             GLib.timeout_add_seconds(2, self.poll_store)
             GLib.timeout_add_seconds(max(2, int(cfg.get("discover_interval", 4))),
@@ -5507,7 +5516,7 @@ def start_gui(use_statusicon=False):
                     self.request_refresh()
             dlg.destroy()
 
-        def start_update_check(self):
+        def start_update_check(self, force=False):
             """Look for a new release in the background.
 
             On its own thread: network latency must not freeze the interface.
@@ -5519,16 +5528,25 @@ def start_gui(use_statusicon=False):
 
             def work():
                 try:
-                    cache = check_update(cfg)
+                    cache = check_update(cfg, force=force)
                 except Exception:
                     return
-                if newer_version(cache.get("latest", "")):
-                    GLib.idle_add(self._once(self.rebuild_menu))
+                latest = cache.get("latest", "")
+                if newer_version(latest):
+                    GLib.idle_add(self._once(self.on_new_release, latest))
 
             threading.Thread(target=work, daemon=True).start()
 
+        def on_new_release(self, latest):
+            """Put the release in the menu and say so once per version."""
+            self.rebuild_menu()
+            if latest == self._announced_release:
+                return
+            self._announced_release = latest
+            notify(*update_notice(latest), cfg=cfg)
+
         def _recheck_updates(self):
-            self.start_update_check()
+            self.start_update_check(force=True)
             return True                      # keep the timer alive
 
         def show_update(self):

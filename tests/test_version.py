@@ -108,4 +108,25 @@ r.check(jd.REPO in jd.update_command() and "curl" in jd.update_command(),
         "the update command points at the repo", jd.update_command())
 r.check("check_updates" in jd.DEFAULT_CONFIG, "the setting is defined in the defaults")
 
+clean()
+real = fake_network({"tag_name": "v9.9.9"})
+try:
+    jd.check_update(CFG, force=True)
+finally:
+    jd.urllib.request.urlopen = real
+
+# The tray's hourly timer forces its way past the cache: a fresh cache used
+# to mean the tray re-read yesterday's answer for a whole day.
+real = fake_network({"tag_name": "v9.9.10"})
+try:
+    cache = jd.check_update(CFG, force=True)
+finally:
+    jd.urllib.request.urlopen = real
+r.check(cache.get("latest") == "v9.9.10", "a forced check goes past a fresh cache")
+
+title, body = jd.update_notice("v9.9.10")
+r.check("v9.9.10" in title and jd.VERSION in title,
+        "the notification names both versions", title)
+r.check(bool(body.strip()), "the notification says what to do next")
+
 raise SystemExit(r.finish())

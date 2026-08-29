@@ -185,5 +185,6 @@
   "done": "tamamlandı",
   "deleted": "silindi",
   "queued": "sırada",
-  "working": "çalışıyor"
+  "working": "çalışıyor",
+  "Open the tray menu to see what changed and update.": "Neyin değiştiğini görmek ve güncellemek için tepsi menüsünü açın."
 }

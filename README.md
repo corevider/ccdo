@@ -540,10 +540,11 @@ printed. It asks before running unless you pass `--yes`.
 The command pins the release it just told you about (`CCDO_REF=v1.2.3`), so
 what arrives is what the notice named.
 
-Once a day the tray checks in the background whether a newer release exists and
-adds an **Update available** line to the menu if so. Asking on every start
-would be wasteful and would tie startup to a network delay; failure is silent.
-The check contacts `api.github.com` and nothing else, and
+The tray checks in the background whether a newer release exists: once at
+startup (honouring a daily cache, so restarts do not hit the network) and then
+every hour for real. When a release turns up it adds an **Update available**
+line to the menu and sends one desktop notification per version. Failure is
+silent. The check contacts `api.github.com` and nothing else, and
 `"check_updates": false` turns it off.
 
 Updating replaces ccdo in place; your settings, queue and history stay put.
@@ -829,7 +830,7 @@ at the bottom opens it. Keys you added by hand are preserved when saving.
 | `max_auto_advance` | `3` | at most this many tasks in a row before you type |
 | `skip_advance_on_question` | `true` | hold back when Claude ended with a question |
 | `question_patterns` | `[]` | extra question patterns (regex) |
-| `check_updates` | `true` | look for a newer release once a day |
+| `check_updates` | `true` | look for a newer release at startup and every hour |
 | `language` | `"auto"` | `auto` follows the desktop, or a code such as `en`, `tr` |
 | `delivery` | `"auto"` | route for untargeted notes: `auto` / `tmux` / `xdotool` / `file` |
 | `file_ref_template` | `"Read {path} and do the task in it."` | the line sent when a note goes to a file |
