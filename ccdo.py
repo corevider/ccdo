@@ -142,6 +142,10 @@ THEME_DARK = {
     "warn": "#d8b46a",
     "warn_bg": "rgba(216, 180, 106, 0.08)",
     "warn_edge": "rgba(216, 180, 106, 0.22)",
+    "state_queued": "#4d545e",  # task indicator: waiting its turn
+    "state_sent": "#5b9cf6",    # handed to the session
+    "state_working": "#e0a83b", # the session is on it right now
+    "state_done": "#3fb970",    # finished (history)
     "mono": "monospace",
     "r_lg": "9px",              # kart / girdi
     "r_md": "7px",              # buton
@@ -165,6 +169,10 @@ THEME_LIGHT = {
     "warn": "#8a6410",
     "warn_bg": "rgba(138, 100, 16, 0.08)",
     "warn_edge": "rgba(138, 100, 16, 0.28)",
+    "state_queued": "#c3c8d0",
+    "state_sent": "#2f6fd6",
+    "state_working": "#c48a12",
+    "state_done": "#2b9a57",
     "mono": "monospace",
     "r_lg": "9px",
     "r_md": "7px",
@@ -1783,6 +1791,43 @@ def state_text(sess):
         return "%s %s" % (row[0], _(row[1]))
     row = STATE_MARKS.get(sess.get("state") or "")
     return "%s %s" % (row[0], _(row[1])) if row else ""
+
+
+# The stage a task is at, as the colored bar on its row tells it. Words and
+# CSS classes come from one table so the tooltip and the color cannot drift.
+TASK_STATES = {
+    "queued":  "queued",
+    "sent":    "sent",
+    "working": "working",
+    "done":    "done",
+    "deleted": "deleted",
+}
+
+
+def latest_sent_id(tasks):
+    """The task handed over most recently: the one a busy session is on."""
+    sent = [t for t in tasks if t.get("status") == "sent"]
+    if not sent:
+        return None
+    return max(sent, key=lambda t: t.get("sent_at") or "")["id"]
+
+
+def task_state(task, sess=None, latest_sent=None):
+    """Which stage a task is at.
+
+    A sent task counts as 'working' only while its session is busy and it is
+    the latest one handed over; older sent tasks stay 'sent', since Claude
+    Code reads one note at a time.
+    """
+    status = task.get("status")
+    if status == "done":
+        return "done"
+    if status != "sent":
+        return "queued"
+    if (sess and sess.get("live", True) and sess.get("state") == "busy"
+            and (latest_sent is None or latest_sent == task.get("id"))):
+        return "working"
+    return "sent"
 
 
 def scroll_step(direction, dx=0.0, dy=0.0):
@@ -3772,6 +3817,13 @@ def start_gui(use_statusicon=False):
                     margin-bottom: 8px; }}
     .jd-taskcard:hover {{ background: {raised}; border-color: {border}; }}
     .jd-time {{ font-size: 10px; color: {faint}; font-family: {mono}; }}
+    /* The bar at the left edge of a row: its color is the task's stage. */
+    .jd-stat {{ min-width: 4px; border-radius: 2px; margin: 2px 8px 2px 0; }}
+    .jd-stat-queued {{ background: {state_queued}; }}
+    .jd-stat-sent {{ background: {state_sent}; }}
+    .jd-stat-working {{ background: {state_working}; }}
+    .jd-stat-done {{ background: {state_done}; }}
+    .jd-stat-deleted {{ background: {faint}; }}
 
     /* --- add row -------------------------------------------------------- */
     .jd-body .jd-addbtn {{ background: transparent; color: {accent};
@@ -4494,10 +4546,12 @@ def start_gui(use_statusicon=False):
                 row.add(lab)
                 self.listbox.add(row)
             pending_ids = [t["id"] for t in tasks if t.get("status") == "pending"]
+            latest = latest_sent_id(tasks)
             for t in tasks:
                 n = (pending_ids.index(t["id"]) + 1
                      if t["id"] in pending_ids else None)
-                self.listbox.add(self.make_row(t, n, len(pending_ids)))
+                state = task_state(t, self.sess, latest)
+                self.listbox.add(self.make_row(t, n, len(pending_ids), state))
             has_pending = any(t.get("status") == "pending" for t in tasks)
             st = self.sess.get("state")
             # "asking": Claude asked a question. Sending a task would answer
@@ -4543,8 +4597,11 @@ def start_gui(use_statusicon=False):
             row = Gtk.ListBoxRow()
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
             box.set_border_width(4)
+            event = rec.get("event")
+            box.pack_start(self.state_bar(event if event in TASK_STATES else "queued"),
+                           False, False, 0)
 
-            glyph = Gtk.Label(label=EVENT_GLYPH.get(rec.get("event"), "·"),
+            glyph = Gtk.Label(label=EVENT_GLYPH.get(event, "·"),
                               xalign=0.5)
             glyph.set_width_chars(2)
             glyph.get_style_context().add_class("jd-sub")
@@ -4568,11 +4625,19 @@ def start_gui(use_statusicon=False):
                 row.set_tooltip_text(text)
             return row
 
-        def make_row(self, t, order=None, total=0):
+        def state_bar(self, state):
+            bar = Gtk.Box()
+            bar.get_style_context().add_class("jd-stat")
+            bar.get_style_context().add_class("jd-stat-%s" % state)
+            bar.set_tooltip_text(_(TASK_STATES[state]))
+            return bar
+
+        def make_row(self, t, order=None, total=0, state="queued"):
             row = Gtk.ListBoxRow()
             row.get_style_context().add_class("jd-taskcard")
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
             box.set_border_width(6)
+            box.pack_start(self.state_bar(state), False, False, 0)
 
             # Position: the next task is always number 1
             num = Gtk.Label(label=("%d" % order) if order else "·", xalign=0.5)
@@ -4608,7 +4673,7 @@ def start_gui(use_statusicon=False):
             lab.set_tooltip_text(t["text"])
             lab.get_style_context().add_class(
                 "jd-task-sent" if t.get("status") == "sent" else "jd-task")
-            extra = " · " + _("sent") if t.get("status") == "sent" else ""
+            extra = " · " + _(TASK_STATES[state]) if state != "queued" else ""
             meta = Gtk.Label(label="%s%s" % (t["id"], extra), xalign=0)
             meta.get_style_context().add_class("jd-meta")
             col.pack_start(lab, False, False, 0)

@@ -39,6 +39,7 @@ def source_strings():
                 keys.add(f[3])
     for row in jd.STATE_MARKS.values():
         keys.add(row[1])
+    keys.update(jd.TASK_STATES.values())
     # Translated at runtime from the config value, so no literal _() to find.
     keys.add(jd.DEFAULT_CONFIG["file_ref_template"])
     return keys

@@ -183,5 +183,7 @@
   "the history is empty": "geçmiş boş",
   "Move to the inbox": "ideabox'a al",
   "done": "tamamlandı",
-  "deleted": "silindi"
+  "deleted": "silindi",
+  "queued": "sırada",
+  "working": "çalışıyor"
 }

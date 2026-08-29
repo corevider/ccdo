@@ -348,6 +348,11 @@ always means it. Sending from it reaches tmux only if there is exactly one
 live session; otherwise it falls back to `xdotool` or the queue file. The `⇄`
 button moves a note to a session.
 
+The bar at the left edge of a task row tells where the task is: grey while
+it waits its turn, blue once it has been handed to the session, amber while
+that session is busy on the latest note it received, green in the history
+once it is done. Hover the bar for the word.
+
 ### Attaching an image or a file
 
 Paste a screenshot into the note box with **Ctrl+V** (Command+V on macOS).
