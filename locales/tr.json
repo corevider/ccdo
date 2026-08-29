@@ -114,7 +114,7 @@
   "SEND NEXT TASK": "SIRADAKİ GÖREVİ GÖNDER",
   "QUEUE NEXT TASK": "SIRADAKİ GÖREVİ VER",
   "Send next task": "Sıradaki görevi gönder",
-  "Inbox notes have no target. Move one to a session with ⇄.": "ideabox'taki notların hedefi yok. ⇄ ile bir oturuma taşı.",
+  "Inbox notes have no target. Give one a session with ✎.": "ideabox'taki notların hedefi yok. ✎ ile bir oturum ver.",
   "takes the next one at the end of each turn": "her tur sonunda sıradakini alır",
   "hands over nothing on its own": "kendiliğinden görev vermez",
   "no auto on this tab": "bu sekmede oto yok",
@@ -181,10 +181,12 @@
   "Session:": "Oturum:",
   "waiting": "bekliyorum",
   "the history is empty": "geçmiş boş",
-  "Move to the inbox": "ideabox'a al",
   "done": "tamamlandı",
   "deleted": "silindi",
   "queued": "sırada",
   "working": "çalışıyor",
-  "Open the tray menu to see what changed and update.": "Neyin değiştiğini görmek ve güncellemek için tepsi menüsünü açın."
+  "Open the tray menu to see what changed and update.": "Neyin değiştiğini görmek ve güncellemek için tepsi menüsünü açın.",
+  "Notes with no session yet land here — from this box or the terminal:": "Henüz oturumu olmayan notlar buraya düşer — bu kutudan ya da terminalden:",
+  "Hand a note to a session with ✎ (Edit → Session), or add it there straight away:": "Bir notu ✎ (Düzenle → Oturum) ile bir oturuma ver, ya da doğrudan oraya ekle:",
+  "Session names: ccdo sessions. With exactly one live session, ▶ sends an inbox note straight to it.": "Oturum adları: ccdo sessions. Tek bir canlı oturum varken ▶ ideabox notunu doğrudan ona gönderir."
 }

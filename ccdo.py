@@ -1746,6 +1746,17 @@ def ghost_session(cfg, target):
     }
 
 
+def inbox_help_lines():
+    """What the inbox page is for, as (text, is_command) lines."""
+    return [
+        (_("Notes with no session yet land here — from this box or the terminal:"), False),
+        ('ccdo add "text"', True),
+        (_("Hand a note to a session with ✎ (Edit → Session), or add it there straight away:"), False),
+        ('ccdo add --target <session> "text"', True),
+        (_("Session names: ccdo sessions. With exactly one live session, ▶ sends an inbox note straight to it."), False),
+    ]
+
+
 def session_folder(sess):
     """The last part of the session working directory: the folder name."""
     return os.path.basename((sess.get("cwd") or "").rstrip("/"))
@@ -3826,6 +3837,8 @@ def start_gui(use_statusicon=False):
                 color: {text}; }}
     .jd-sub {{ font-size: 10px; color: {dim}; font-family: {mono}; }}
     .jd-hint {{ font-size: 10px; color: {faint}; }}
+    .jd-help {{ font-size: 11px; color: {dim}; }}
+    .jd-cmd {{ font-size: 11px; color: {text}; font-family: {mono}; }}
     .jd-meta {{ font-size: 10px; color: {faint}; font-family: {mono}; }}
     .jd-empty {{ font-size: 11px; color: {faint}; }}
     .jd-task {{ color: {text}; }}
@@ -4244,6 +4257,10 @@ def start_gui(use_statusicon=False):
             # in its own chip.
             self.chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             card.pack_start(self.chips, False, False, 0)
+            if sess["target"] == INBOX:
+                # The inbox has no folder or target to show; the room goes
+                # to a few lines on what the page is for.
+                card.pack_start(self.build_inbox_help(), False, False, 0)
 
             self.path_lbl = None
             if sess.get("cwd"):
@@ -4407,7 +4424,7 @@ def start_gui(use_statusicon=False):
             if sess["target"] == INBOX:
                 self.send_lbl.set_text(_("SEND NEXT TASK"))
                 self.send_btn.set_tooltip_text(
-                    _("Inbox notes have no target. Move one to a session with ⇄."))
+                    _("Inbox notes have no target. Give one a session with ✎."))
             self.send_btn.connect("clicked", lambda *_: self.app.send_next(self.key()))
             foot.pack_end(self.send_btn, False, False, 0)
             inner.pack_start(foot, False, False, 0)
@@ -4477,6 +4494,20 @@ def start_gui(use_statusicon=False):
             else:
                 ctx.add_class("jd-dead")
 
+        def build_inbox_help(self):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+            for text, is_command in inbox_help_lines():
+                lbl = Gtk.Label(label=text, xalign=0)
+                lbl.set_line_wrap(True)
+                lbl.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                lbl.set_max_width_chars(48)
+                lbl.get_style_context().add_class("jd-cmd" if is_command else "jd-help")
+                if is_command:
+                    lbl.set_selectable(True)
+                    lbl.set_margin_start(12)
+                box.pack_start(lbl, False, False, 0)
+            return box
+
         def build_chips(self, sess):
             """Spread the identity details across chips.
 
@@ -4486,6 +4517,9 @@ def start_gui(use_statusicon=False):
             for ch in self.chips.get_children():
                 self.chips.remove(ch)
             items = []
+            if sess["target"] == INBOX:
+                self.chips.hide()
+                return
             folder = session_folder(sess)
             if folder and folder != sess.get("label"):
                 items.append(folder)
@@ -5754,22 +5788,6 @@ def start_gui(use_statusicon=False):
             self.request_refresh()
             if task and res["send"]:
                 self.send_task(task["id"])
-
-        def move_menu(self, widget, task_id):
-            m = Gtk.Menu()
-            for s in self.sessions:
-                if s["target"] == INBOX:
-                    continue
-                mi = Gtk.MenuItem.new_with_label("%s  (%s)" % (s["label"], s["target"]))
-                mi.connect("activate", lambda _w, tg=s["target"]:
-                           (store.update(task_id, target=tg), self.request_refresh()))
-                m.append(mi)
-            mi = Gtk.MenuItem.new_with_label(_("Move to the inbox"))
-            mi.connect("activate", lambda _w: (store.update(task_id, target=None),
-                                               self.request_refresh()))
-            m.append(mi)
-            m.show_all()
-            m.popup_at_widget(widget, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
 
         # -- refresh ---------------------------------------------------- #
 

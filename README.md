@@ -345,8 +345,9 @@ fails for any reason (an old tmux, say) delivery takes that route by itself.
 without `--target` lands there). It is pinned at the left edge of the tab
 strip: the session tabs scroll past it, the ideabox stays put, and `Ctrl+1`
 always means it. Sending from it reaches tmux only if there is exactly one
-live session; otherwise it falls back to `xdotool` or the queue file. The `⇄`
-button moves a note to a session.
+live session; otherwise it falls back to `xdotool` or the queue file. The `✎`
+button on a note gives it a session; the page itself says how to add from the
+terminal (`ccdo add "text"`, or `--target <session>` to skip the inbox).
 
 The bar at the left edge of a task row tells where the task is: grey while
 it waits its turn, blue once it has been handed to the session, amber while
