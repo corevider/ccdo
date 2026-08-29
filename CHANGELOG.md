@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.32] - 2026-08-29
+
+### Added
+
+- **macos:** hourly update check and a notification for a new release (e8fad10)
 ## [1.0.31] - 2026-08-29
 
 ### Added
