@@ -1713,11 +1713,23 @@ def inbox_session():
 def with_inbox(sessions):
     """Put the inbox in front of the sessions.
 
-    Its tab is pinned at the left edge of the strip, outside the part that
-    scrolls, so its page has to be the first one as well: Ctrl+1 and the
-    wheel order then match what the eye sees.
+    Its tab is pinned at the left edge of the strip, so menus and pickers
+    list it first as well.
     """
     return [inbox_session()] + [s for s in sessions if s["target"] != INBOX]
+
+
+def next_page_index(current, count, delta):
+    """Step through `count` session tabs, wrapping at the ends.
+
+    From outside them (the inbox is no session tab) the step lands on the
+    first or the last one. None when there is nothing to step to.
+    """
+    if count <= 0:
+        return None
+    if current is None:
+        return 0 if delta > 0 else count - 1
+    return (current + delta) % count
 
 
 def ghost_session(cfg, target):
@@ -5130,15 +5142,13 @@ def start_gui(use_statusicon=False):
                 self.hide()
                 return True
             if ctrl and ev.keyval in (Gdk.KEY_Tab, Gdk.KEY_Page_Down):
-                self.nb.next_page()
+                self.app.step_page(+1)
                 return True
             if ctrl and ev.keyval == Gdk.KEY_Page_Up:
-                self.nb.prev_page()
+                self.app.step_page(-1)
                 return True
             if ctrl and Gdk.KEY_1 <= ev.keyval <= Gdk.KEY_9:
-                idx = ev.keyval - Gdk.KEY_1
-                if idx < self.nb.get_n_pages():
-                    self.nb.set_current_page(idx)
+                self.app.select_slot(ev.keyval - Gdk.KEY_1)
                 return True
             return False
 
@@ -5154,8 +5164,6 @@ def start_gui(use_statusicon=False):
             self.win = NoteWindow(self)
             self.win.nb.connect("switch-page",
                                 lambda *_: GLib.idle_add(self.sync_tab_accent))
-            self.win.nb.connect("page-reordered",
-                                lambda *_: GLib.idle_add(self.keep_inbox_first))
             self.menu = Gtk.Menu()
             self.last_mtime = None
             self.last_sig = None
@@ -5293,8 +5301,8 @@ def start_gui(use_statusicon=False):
                     if idx >= 0:
                         nb.remove_page(idx)
 
-            # Add new ones, keep the order
-            for i, s in enumerate(self.sessions):
+            # Add new ones
+            for s in self.sessions:
                 target = s["target"]
                 page = self.pages.get(target)
                 if page is None:
@@ -5307,23 +5315,29 @@ def start_gui(use_statusicon=False):
                         # non-reorderable tab to nothing.
                         blank = Gtk.Box()
                         blank.show()
-                        nb.insert_page(page, blank, i)
+                        nb.insert_page(page, blank, 0)
                         self.win.pin_tab(self.make_tab_body(s),
                                          "jd-a-%s" % slug(target),
                                          lambda *_: self.show_inbox(),
                                          self.on_tab_scroll)
                     else:
-                        nb.insert_page(page, self.make_tab(s), i)
-                        # So tabs can be dragged into a different order. To
-                        # keep a hand-made order intact, rebuild_pages never
-                        # moves an existing page; it only appends new ones.
+                        nb.append_page(page, self.make_tab(s))
                         nb.set_tab_reorderable(page, True)
                     page.show_all()
                 else:
                     page.apply_session(s)
                     self.update_tab(s)
-                    if nb.page_num(page) != i:
-                        nb.reorder_child(page, i)
+
+            # Keep the session order. The inbox stays wherever show_inbox
+            # last parked it: moving its empty tab would scroll the strip.
+            wanted = [s["target"] for s in self.sessions if s["target"] != INBOX]
+            inbox = self.pages.get(INBOX)
+            if inbox is not None:
+                wanted.insert(min(nb.page_num(inbox), len(wanted)), INBOX)
+            for i, target in enumerate(wanted):
+                page = self.pages[target]
+                if nb.page_num(page) != i:
+                    nb.reorder_child(page, i)
 
             if current_target and current_target in self.pages:
                 idx = nb.page_num(self.pages[current_target])
@@ -5338,19 +5352,48 @@ def start_gui(use_statusicon=False):
                     nb.set_current_page(nb.page_num(self.pages[first]))
             self.sync_tab_accent()
 
-        def show_inbox(self):
-            page = self.pages.get(INBOX)
-            if page is not None:
-                idx = self.win.nb.page_num(page)
-                if idx >= 0:
-                    self.win.nb.set_current_page(idx)
+        def session_pages(self):
+            """The session pages in strip order, the inbox left out."""
+            nb = self.win.nb
+            inbox = self.pages.get(INBOX)
+            return [nb.get_nth_page(i) for i in range(nb.get_n_pages())
+                    if nb.get_nth_page(i) is not inbox]
 
-        def keep_inbox_first(self):
-            """A dragged tab can land in front of the inbox's empty tab;
-            put the inbox back at the front so Ctrl+1 keeps meaning it."""
+        def show_inbox(self):
+            """Open the inbox without moving the strip.
+
+            The notebook scrolls the strip to the selected page's tab, and
+            the inbox's empty tab used to sit first: choosing the inbox threw
+            the strip back to its start. Parking the page next to the current
+            one keeps the strip where it was.
+            """
+            nb = self.win.nb
             page = self.pages.get(INBOX)
-            if page is not None and self.win.nb.page_num(page) > 0:
-                self.win.nb.reorder_child(page, 0)
+            if page is None:
+                return
+            cur = nb.get_current_page()
+            if cur >= 0 and nb.get_nth_page(cur) is not page:
+                nb.reorder_child(page, cur + 1)
+            nb.set_current_page(nb.page_num(page))
+
+        def select_slot(self, idx):
+            """Ctrl+1 is the inbox; Ctrl+2 onwards follow the strip."""
+            if idx == 0:
+                self.show_inbox()
+                return
+            pages = self.session_pages()
+            if idx - 1 < len(pages):
+                self.win.nb.set_current_page(self.win.nb.page_num(pages[idx - 1]))
+
+        def step_page(self, delta):
+            """Ctrl+Tab and the wheel walk the session tabs, wrapping."""
+            nb = self.win.nb
+            pages = self.session_pages()
+            cur = nb.get_nth_page(nb.get_current_page())
+            idx = next_page_index(pages.index(cur) if cur in pages else None,
+                                  len(pages), delta)
+            if idx is not None:
+                nb.set_current_page(nb.page_num(pages[idx]))
 
         def sync_tab_accent(self, *_):
             """Pull the selected tab's underline to that session's color.
@@ -5415,12 +5458,7 @@ def start_gui(use_statusicon=False):
             step = scroll_step(names.get(ev.direction, ""), dx, dy)
             if not step:
                 return False
-            nb = self.win.nb
-            n = nb.get_n_pages()
-            if n < 2:
-                return True
-            # Uclarda durmak yerine basa/sona sar: az sekmede daha rahat.
-            nb.set_current_page((nb.get_current_page() + step) % n)
+            self.step_page(step)
             return True
 
         def update_tab_mark(self, sess):

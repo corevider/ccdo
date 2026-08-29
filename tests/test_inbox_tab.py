@@ -23,4 +23,13 @@ r.check(live == [{"target": "a:1", "label": "a", "live": True},
                  {"target": "b:2", "label": "b", "live": False}],
         "the input list is left untouched")
 
+# Ctrl+Tab and the wheel walk the session tabs only; the inbox has its own
+# pinned button and Ctrl+1.
+r.check(jd.next_page_index(0, 3, +1) == 1, "a step forward")
+r.check(jd.next_page_index(2, 3, +1) == 0, "the last tab wraps to the first")
+r.check(jd.next_page_index(0, 3, -1) == 2, "the first tab wraps to the last")
+r.check(jd.next_page_index(None, 3, +1) == 0, "from the inbox, forward lands on the first")
+r.check(jd.next_page_index(None, 3, -1) == 2, "from the inbox, back lands on the last")
+r.check(jd.next_page_index(None, 0, +1) is None, "no session tabs, nowhere to go")
+
 raise SystemExit(r.finish())
