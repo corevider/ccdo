@@ -9,6 +9,12 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.30] - 2026-08-29
+
+### Added
+
+- **gui:** color bar shows each task's stage (d58f24d)
+- **gui:** pin the ideabox tab left of the strip (0145bc1)
 ## [1.0.29] - 2026-08-14
 
 ### Fixed
