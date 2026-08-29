@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.33] - 2026-08-30
+
+### Fixed
+
+- **gui:** choosing the ideabox no longer scrolls the tab strip (ce9c620)
 ## [1.0.32] - 2026-08-29
 
 ### Added
