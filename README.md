@@ -342,9 +342,11 @@ a single "read this file and do it" line goes to the terminal. If the paste
 fails for any reason (an old tmux, say) delivery takes that route by itself.
 
 **ideabox** is the tab for notes with no target (anything added from the CLI
-without `--target` lands there). Sending from it reaches tmux only if there is
-exactly one live session; otherwise it falls back to `xdotool` or the queue
-file. The `⇄` button moves a note to a session.
+without `--target` lands there). It is pinned at the left edge of the tab
+strip: the session tabs scroll past it, the ideabox stays put, and `Ctrl+1`
+always means it. Sending from it reaches tmux only if there is exactly one
+live session; otherwise it falls back to `xdotool` or the queue file. The `⇄`
+button moves a note to a session.
 
 ### Attaching an image or a file
 

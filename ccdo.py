@@ -1687,6 +1687,23 @@ def discover_sessions(cfg):
     return dedupe_colors(out, explicit)
 
 
+def inbox_session():
+    """The virtual session that holds notes with no target."""
+    return {"target": INBOX, "label": "ideabox", "color": "#8a8f99",
+            "cwd": "", "cmd": "", "queue_file": None, "live": True,
+            "color_source": "palet"}
+
+
+def with_inbox(sessions):
+    """Put the inbox in front of the sessions.
+
+    Its tab is pinned at the left edge of the strip, outside the part that
+    scrolls, so its page has to be the first one as well: Ctrl+1 and the
+    wheel order then match what the eye sees.
+    """
+    return [inbox_session()] + [s for s in sessions if s["target"] != INBOX]
+
+
 def ghost_session(cfg, target):
     """A target that is no longer live but still holds tasks."""
     ov = session_override(cfg, target)
@@ -3877,6 +3894,24 @@ def start_gui(use_statusicon=False):
                                                          font-weight: 700;
                                                          background: {surface};
                                                          box-shadow: inset 0 -3px {accent}; }}
+    /* The inbox's real tab is the only one that cannot be dragged; it is
+       shrunk to nothing because the pinned button left of the strip stands
+       in for it. */
+    notebook.jd-body > header > tabs > tab:not(.reorderable-page) {{
+        padding: 0; margin: 0; min-width: 0; min-height: 0;
+        border: none; background: transparent; box-shadow: none; }}
+    /* The pinned tab is a button, styled to read as one of the tabs. */
+    notebook.jd-body > header > .jd-pin {{ border: none; padding: 9px 14px;
+                                          margin: 0; color: {dim};
+                                          font-size: 12px; min-height: 0;
+                                          background: transparent;
+                                          border-radius: {r_lg} {r_lg} 0 0; }}
+    notebook.jd-body > header > .jd-pin label {{ color: {dim}; }}
+    notebook.jd-body > header > .jd-pin:hover {{ background: {surface}; }}
+    notebook.jd-body > header > .jd-pin:checked {{ background: {surface};
+                                                  box-shadow: inset 0 -3px {accent}; }}
+    notebook.jd-body > header > .jd-pin:checked label {{ color: {text};
+                                                        font-weight: 700; }}
 
     /* --- history expander ----------------------------------------------- */
     .jd-body expander title {{ color: {dim}; font-size: 11px; }}
@@ -3949,8 +3984,9 @@ def start_gui(use_statusicon=False):
             # Underline the selected tab in that session's color. We cannot
             # put a class on the tab node, so the class sits on the Notebook
             # and is updated as the page changes.
-            "notebook.jd-nb-{k} > header > tabs > tab:checked"
+            "notebook.jd-nb-{k} > header > tabs > tab.reorderable-page:checked"
             " {{ box-shadow: inset 0 -3px {c}; }}\n"
+            ".jd-pin.jd-a-{k}:checked {{ box-shadow: inset 0 -3px {c}; }}\n"
         )
         chunks = []
         for s in sessions:
@@ -4958,6 +4994,32 @@ def start_gui(use_statusicon=False):
             self.nb.set_scrollable(True)
             self.nb.get_style_context().add_class("jd-body")
             self.add(self.nb)
+            self.pin = None
+
+        def pin_tab(self, tab, css_class, on_click, on_scroll):
+            """Park a tab at the left edge of the strip, outside the part
+            that scrolls, so it stays in view however many sessions there are."""
+            btn = Gtk.Button()
+            btn.set_relief(Gtk.ReliefStyle.NONE)
+            btn.set_can_focus(False)
+            btn.get_style_context().add_class("jd-pin")
+            btn.get_style_context().add_class(css_class)
+            btn.add(tab)
+            btn.connect("clicked", on_click)
+            btn.add_events(Gdk.EventMask.SCROLL_MASK
+                           | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+            btn.connect("scroll-event", on_scroll)
+            btn.show_all()
+            self.nb.set_action_widget(btn, Gtk.PackType.START)
+            self.pin = btn
+
+        def set_pinned_active(self, active):
+            if self.pin is None:
+                return
+            if active:
+                self.pin.set_state_flags(Gtk.StateFlags.CHECKED, False)
+            else:
+                self.pin.unset_state_flags(Gtk.StateFlags.CHECKED)
 
         def on_delete(self, *_):
             self.hide()
@@ -4993,6 +5055,8 @@ def start_gui(use_statusicon=False):
             self.win = NoteWindow(self)
             self.win.nb.connect("switch-page",
                                 lambda *_: GLib.idle_add(self.sync_tab_accent))
+            self.win.nb.connect("page-reordered",
+                                lambda *_: GLib.idle_add(self.keep_inbox_first))
             self.menu = Gtk.Menu()
             self.last_mtime = None
             self.last_sig = None
@@ -5059,9 +5123,7 @@ def start_gui(use_statusicon=False):
             for t in store.active_targets():
                 if t not in live_targets:
                     sessions.append(ghost_session(cfg, t))
-            sessions.append({"target": INBOX, "label": "ideabox", "color": "#8a8f99",
-                             "cwd": "", "cmd": "", "queue_file": None, "live": True,
-                             "color_source": "palet"})
+            sessions = with_inbox(sessions)
             self.sessions = sessions
             rebuild_accent_css(sessions)
 
@@ -5138,11 +5200,24 @@ def start_gui(use_statusicon=False):
                 if page is None:
                     page = SessionPage(self, s)
                     self.pages[target] = page
-                    nb.insert_page(page, self.make_tab(s), i)
-                    # So tabs can be dragged into a different order. To keep a
-                    # hand-made order intact, rebuild_pages never moves an
-                    # existing page; it only appends new ones.
-                    nb.set_tab_reorderable(page, True)
+                    if target == INBOX:
+                        # The inbox's tab lives in the pinned slot left of
+                        # the strip. The notebook still needs a tab for the
+                        # page; it stays empty, and the CSS shrinks the only
+                        # non-reorderable tab to nothing.
+                        blank = Gtk.Box()
+                        blank.show()
+                        nb.insert_page(page, blank, i)
+                        self.win.pin_tab(self.make_tab_body(s),
+                                         "jd-a-%s" % slug(target),
+                                         lambda *_: self.show_inbox(),
+                                         self.on_tab_scroll)
+                    else:
+                        nb.insert_page(page, self.make_tab(s), i)
+                        # So tabs can be dragged into a different order. To
+                        # keep a hand-made order intact, rebuild_pages never
+                        # moves an existing page; it only appends new ones.
+                        nb.set_tab_reorderable(page, True)
                     page.show_all()
                 else:
                     page.apply_session(s)
@@ -5154,7 +5229,28 @@ def start_gui(use_statusicon=False):
                 idx = nb.page_num(self.pages[current_target])
                 if idx >= 0:
                     nb.set_current_page(idx)
+            elif current_target is None:
+                # First build: open on the first real session, as before the
+                # inbox moved to the front of the strip.
+                first = next((s["target"] for s in self.sessions
+                              if s["target"] != INBOX), None)
+                if first is not None:
+                    nb.set_current_page(nb.page_num(self.pages[first]))
             self.sync_tab_accent()
+
+        def show_inbox(self):
+            page = self.pages.get(INBOX)
+            if page is not None:
+                idx = self.win.nb.page_num(page)
+                if idx >= 0:
+                    self.win.nb.set_current_page(idx)
+
+        def keep_inbox_first(self):
+            """A dragged tab can land in front of the inbox's empty tab;
+            put the inbox back at the front so Ctrl+1 keeps meaning it."""
+            page = self.pages.get(INBOX)
+            if page is not None and self.win.nb.page_num(page) > 0:
+                self.win.nb.reorder_child(page, 0)
 
         def sync_tab_accent(self, *_):
             """Pull the selected tab's underline to that session's color.
@@ -5173,8 +5269,10 @@ def start_gui(use_statusicon=False):
                 if p is page:
                     ctx.add_class("jd-nb-%s" % slug(target))
                     break
+            self.win.set_pinned_active(page is self.pages.get(INBOX))
 
-        def make_tab(self, s):
+        def make_tab_body(self, s):
+            """The mark and the name of a tab, without any event plumbing."""
             tab = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             tab.get_style_context().add_class("jd-a-%s" % slug(s["target"]))
             # The state mark sits left of the name so a glance at the tab
@@ -5192,7 +5290,9 @@ def start_gui(use_statusicon=False):
             # change after the tab is first built.
             self.tab_labels[s["target"]] = lbl
             self.tab_marks[s["target"]] = mark
+            return tab
 
+        def make_tab(self, s):
             # A Gtk.Box has no window of its own and cannot receive scroll
             # events. An invisible EventBox wraps it so scrolling changes tabs
             # ONLY over the tab strip, not in the note box or the list.
@@ -5201,7 +5301,7 @@ def start_gui(use_statusicon=False):
             eb.add_events(Gdk.EventMask.SCROLL_MASK
                           | Gdk.EventMask.SMOOTH_SCROLL_MASK)
             eb.connect("scroll-event", self.on_tab_scroll)
-            eb.add(tab)
+            eb.add(self.make_tab_body(s))
             eb.show_all()
             return eb
 
