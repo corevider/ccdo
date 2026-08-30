@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.40] - 2026-08-30
+
+### Fixed
+
+- **hooks:** a handed-over note finishes when its turn ends; working means that note (ed71099)
 ## [1.0.39] - 2026-08-30
 
 ### Fixed
