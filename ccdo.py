@@ -112,7 +112,7 @@ DEFAULT_CONFIG = {
     "use_claude_session_name": True, # take the tab name from Claude Code
     "use_claude_theme_color": True,  # take the color from the Claude Code theme
     "terminal_command": "auto",      # how "open terminal" starts one; {cmd} = what to run
-    "terminal_switch_client": True,  # Wayland: show the session in the tab used last
+    "terminal_switch_client": False, # Wayland: switch the tab used last to the session
     "use_claude_agent_color": True,  # take the color from /color
     "window_keep_above": True,       # keep the window on top
     "window_utility_hint": False,    # UTILITY hint (troublesome on some WMs)
@@ -972,10 +972,10 @@ SETTINGS_SCHEMA = (
          "If you ran /color in the session, the tab uses that color."),
         ("use_claude_theme_color", "bool", "Take the color from the Claude Code theme",
          "The theme's claude accent, for sessions on a custom theme."),
-        ("terminal_switch_client", "bool", "Show a session in the terminal tab used last",
-         "On Wayland no program may raise another's window; with this on, the "
-         "terminal comes up and its most recently used tmux tab switches to the "
-         "session. Off: a new terminal attaches instead."),
+        ("terminal_switch_client", "bool", "Switch the last-used terminal tab to the session",
+         "Wayland only, off by default: the terminal comes up and whichever tmux "
+         "tab you used last switches to the session — that tab, not the "
+         "session's own. Off: a new terminal attaches instead."),
         ("terminal_command", "str", "Terminal for the 'open terminal' button",
          "auto picks ptyxis, kitty, alacritty, gnome-terminal or "
          "x-terminal-emulator. Or a command with {cmd}, e.g. kitty -e sh -c {cmd}"),
@@ -2072,7 +2072,7 @@ def show_in_recent_client(cfg, session, token):
     """Wayland without an extension: bring the terminal up and switch its
     most recently used tmux tab to the session (unless that tab already
     shows it)."""
-    if not cfg.get("terminal_switch_client", True):
+    if not cfg.get("terminal_switch_client", False):
         return False
     clients = tmux_clients()
     if not clients:

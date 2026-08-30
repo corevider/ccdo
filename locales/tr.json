@@ -221,8 +221,8 @@
   "Open the session's terminal": "Oturumun terminalini aç",
   "no tmux session for %s": "%s için tmux oturumu yok",
   "no terminal found; set terminal_command in the settings": "terminal bulunamadı; ayarlardan terminal_command belirleyin",
-  "Show a session in the terminal tab used last": "Oturumu en son kullanılan terminal sekmesinde göster",
-  "On Wayland no program may raise another's window; with this on, the terminal comes up and its most recently used tmux tab switches to the session. Off: a new terminal attaches instead.": "Wayland'da hiçbir program başka bir pencereyi öne getiremez; bu açıkken terminal öne gelir ve en son kullanılan tmux sekmesi oturuma geçer. Kapalıysa yeni bir terminal bağlanır.",
+  "Switch the last-used terminal tab to the session": "En son kullanılan terminal sekmesini oturuma çevir",
+  "Wayland only, off by default: the terminal comes up and whichever tmux tab you used last switches to the session — that tab, not the session's own. Off: a new terminal attaches instead.": "Yalnızca Wayland, öntanımlı kapalı: terminal öne gelir ve en son kullandığınız tmux sekmesi (oturumun kendi sekmesi değil) oturuma geçer. Kapalıysa yeni bir terminal bağlanır.",
   "Terminal for the 'open terminal' button": "'Terminali aç' düğmesinin kullanacağı terminal",
   "auto picks ptyxis, kitty, alacritty, gnome-terminal or x-terminal-emulator. Or a command with {cmd}, e.g. kitty -e sh -c {cmd}": "auto sırayla ptyxis, kitty, alacritty, gnome-terminal ya da x-terminal-emulator seçer. Ya da {cmd} içeren bir komut, örn. kitty -e sh -c {cmd}"
 }

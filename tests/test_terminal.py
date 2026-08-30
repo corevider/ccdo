@@ -83,9 +83,9 @@ finally:
 
 # Switching the last-used tab is a choice; off, the chain falls through.
 jd.tmux_clients = lambda session=None: [{"tty": "/dev/pts/9", "activity": 5, "session": "other", "pid": "1"}]
-r.check(jd.show_in_recent_client(dict(CFG, terminal_switch_client=False), "cc-x", "tok") is False,
-        "with the switch off the last tab is left alone")
-r.check(jd.show_in_recent_client(CFG, "cc-x", "") is False or jd.IS_MAC,
+r.check(jd.show_in_recent_client(CFG, "cc-x", "tok") is False,
+        "switching the last-used tab is opt-in: off by default, the tab is left alone")
+r.check(jd.show_in_recent_client(dict(CFG, terminal_switch_client=True), "cc-x", "") is False or jd.IS_MAC,
         "without a token the terminal cannot be raised, so nothing is switched")
 
 raise SystemExit(r.finish())

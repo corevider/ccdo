@@ -448,10 +448,10 @@ The pane is selected in tmux, then the first of these that works:
    whose title names the session (ccdo switches tmux titles on for that
    session so there is a title to match). One session per terminal window is
    what makes this exact; tabs in one window cannot be told apart.
-3. **Wayland without it** — no program may raise another's window on its
-   own, but the click in ccdo yields an activation token, so the terminal
-   comes up; its most recently used tmux tab then switches to the session.
-   `terminal_switch_client: false` turns this off.
+3. **Wayland without it, with `terminal_switch_client: true`** (off by
+   default) — the click in ccdo yields an activation token, so the terminal
+   comes up, and whichever tmux tab you used last switches to the session.
+   That is that tab, not the session's own, which is why it is opt-in.
 4. Otherwise a new terminal window attaches to the tmux session.
    `terminal_command` picks the terminal: `auto` tries ptyxis, kitty,
    alacritty, gnome-terminal and x-terminal-emulator in turn, or give a
@@ -911,7 +911,7 @@ at the bottom opens it. Keys you added by hand are preserved when saving.
 | `skip_advance_on_question` | `true` | hold back when Claude ended with a question |
 | `question_patterns` | `[]` | extra question patterns (regex) |
 | `check_updates` | `true` | look for a newer release at startup and every hour |
-| `terminal_switch_client` | `true` | Wayland: bring the terminal up and switch its last-used tmux tab to the session |
+| `terminal_switch_client` | `false` | Wayland: bring the terminal up and switch its last-used tmux tab to the session |
 | `terminal_command` | `"auto"` | terminal for the "open terminal" button; `auto` picks one installed, or a command with `{cmd}` |
 | `statusline_chips` | `true` | keep the status line's facts and show them under a session's title |
 | `statusline_own_line` | `true` | draw a plain status line in the terminal when there is no other one |
