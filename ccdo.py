@@ -5078,6 +5078,13 @@ def start_gui(use_statusicon=False):
             k = self.key()
             fresh = next((s for s in self.app.sessions if s["target"] == k), None)
             if fresh:
+                # Facts that arrive after the page was built — the directory
+                # a late hook fills in, a name from /rename — must reach the
+                # labels too; they used to be applied only on a tab rebuild.
+                facts = (fresh.get("cwd"), fresh.get("label"), fresh.get("live"))
+                if facts != (self.sess.get("cwd"), self.sess.get("label"),
+                             self.sess.get("live")):
+                    self.apply_session(fresh)
                 self.sess = fresh
             state = self.sess.get("state", "unknown")
             self.state_lbl.set_text(state_word(self.sess))
