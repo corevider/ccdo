@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.50] - 2026-08-30
+
+### Added
+
+- **gui:** show the session's own terminal on Wayland where it can be done (5c68dce)
 ## [1.0.49] - 2026-08-30
 
 ### Fixed
