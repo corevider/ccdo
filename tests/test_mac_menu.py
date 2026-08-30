@@ -338,7 +338,28 @@ def install_stubs(state):
         setSize_=lambda s: None,
         setTemplate_=lambda f: state.__setitem__("template", f))))
     appkit.NSImage = Image
-    appkit.NSAlert = types.SimpleNamespace(alloc=lambda: Alloc(lambda *a: None))
+    class Alert:
+        """A confirmation; the test picks the answer through state."""
+
+        def __init__(self):
+            self.buttons = []
+
+        def init(self):
+            return self
+
+        def setMessageText_(self, text):
+            self.message = text
+
+        def setInformativeText_(self, text):
+            self.info = text
+
+        def addButtonWithTitle_(self, title):
+            self.buttons.append(title)
+
+        def runModal(self):
+            state.setdefault("alerts", []).append(self)
+            return state.get("alert_answer", 1000)
+    appkit.NSAlert = types.SimpleNamespace(alloc=lambda: Alert())
     appkit.NSWorkspace = types.SimpleNamespace(sharedWorkspace=lambda: None)
     appkit.NSVariableStatusItemLength = -1
     appkit.NSApplicationActivationPolicyAccessory = 1
@@ -473,9 +494,30 @@ jd._MAC_ACTIONS[done.tag()]()
 r.check(len(store.pending("%9")) == 1, "Done really takes the task out of the queue")
 
 back = next(i for i in walk(state["status"].menu) if i.title == "Back to the ideabox")
+state["alert_answer"] = 1001
 jd._MAC_ACTIONS[back.tag()]()
-r.check(not store.pending("%9") and len(store.pending(None)) >= 1,
-        "Back to the ideabox moves the note out of the session")
+r.check(len(store.pending("%9")) == 1, "Back to the ideabox asks first; Cancel leaves it")
+alert = state["alerts"][-1]
+r.check("ideabox" in alert.message and alert.buttons[0] == "Move to the ideabox",
+        "the question says where the note goes", str(alert.buttons))
+state["alert_answer"] = 1000
+jd._MAC_ACTIONS[back.tag()]()
+def inbox_pending():
+    return [t for t in store.pending() if not t.get("target")]
+
+
+r.check(not store.pending("%9") and len(inbox_pending()) == 1,
+        "confirmed, the note leaves the session for the inbox")
+
+jd._MAC_ACTIONS[next(i for i in walk(state["status"].menu) if i.title == "Scan sessions").tag()]()
+inbox_entry = next(i for i in state["status"].menu.items if i.title.startswith("ideabox"))
+inbox_row = next(i for i in inbox_entry.submenu.items if i.submenu is not None)
+r.check(inbox_row.submenu.titles() == ["Hand to api-server", "Delete"],
+        "an inbox note is handed to a session or dropped, not run",
+        str(inbox_row.submenu.titles()))
+jd._MAC_ACTIONS[inbox_row.submenu.items[0].tag()]()
+r.check(len(store.pending("%9")) == 1 and not inbox_pending(),
+        "handing it over puts it in that session's queue")
 
 # A session that has closed but still holds notes is listed as closed, and
 # can be emptied from its own submenu; then it is gone.

@@ -349,11 +349,15 @@ fails for any reason (an old tmux, say) delivery takes that route by itself.
 **ideabox** is the tab for notes with no target (anything added from the CLI
 without `--target` lands there). It is pinned at the left edge of the tab
 strip: the session tabs scroll past it, the ideabox stays put, and `Ctrl+1`
-always means it. Sending from it reaches tmux only if there is exactly one
-live session; otherwise it falls back to `xdotool` or the queue file. The `✎`
-button on a note gives it a session, and `⇄` on a session's note sends it back
-here; the page itself says how to add from the terminal (`ccdo add "text"`, or
-`--target <session>` to skip the inbox).
+always means it. Nothing runs from the ideabox: a note there has `→` to hand
+it to a live session, `✎` to edit it and `✕` to drop it, and the session's own
+page sends it. On a session, `⇄` sends a waiting note back to the ideabox —
+after a confirmation, since it leaves the queue you are looking at — and the
+ideabox can hand it out again. The page itself says how to add from the
+terminal (`ccdo add "text"`, or `--target <session>` to skip the inbox).
+Untargeted notes sent from the CLI (`ccdo send`, `ccdo next` with no session
+around) still take the delivery route: tmux when exactly one session is live,
+otherwise `xdotool` or the queue file.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/ideabox-dark.png">

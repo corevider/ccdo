@@ -1719,6 +1719,13 @@ def with_inbox(sessions):
     return [inbox_session()] + [s for s in sessions if s["target"] != INBOX]
 
 
+def back_to_inbox_prompt():
+    """Title and explanation of the 'back to the ideabox' confirmation."""
+    return (_("Send this note back to the ideabox?"),
+            _("It leaves this session's queue. From the ideabox you can hand it "
+              "to any session again."))
+
+
 def session_list(cfg, store):
     """Every session the window and the menu show.
 
@@ -1766,9 +1773,9 @@ def inbox_help_lines():
     return [
         (_("Notes with no session yet land here — from this box or the terminal:"), False),
         ('ccdo add "text"', True),
-        (_("Hand a note to a session with ✎ (Edit → Session), or add it there straight away:"), False),
+        (_("Hand a note to a session with →, or add it there straight away:"), False),
         ('ccdo add --target <session> "text"', True),
-        (_("Session names: ccdo sessions. With exactly one live session, ▶ sends an inbox note straight to it."), False),
+        (_("Session names: ccdo sessions. Nothing runs from here; the session's page sends the note."), False),
     ]
 
 
@@ -3712,11 +3719,20 @@ def start_mac_gui():
                     row.setSubmenu_(acts)
                     row.setEnabled_(True)
                     tid = task["id"]
+                    if target == INBOX:
+                        # An inbox note is handed to a session or dropped;
+                        # running or finishing it happens on the session.
+                        for live in self.sessions:
+                            if live.get("live") and live["target"] != INBOX:
+                                self.add(acts, _("Hand to %s") % live["label"],
+                                         lambda i=tid, tg=live["target"]:
+                                         (store.update(i, target=tg),
+                                          self.refresh(force=True)))
+                        self.add(acts, _("Delete"), lambda i=tid: self.delete(i))
+                        continue
                     self.add(acts, _("Send"), lambda i=tid: self.send_task(i))
-                    if target != INBOX:
-                        self.add(acts, _("Back to the ideabox"),
-                                 lambda i=tid: (store.update(i, target=None),
-                                                self.refresh(force=True)))
+                    self.add(acts, _("Back to the ideabox"),
+                             lambda i=tid: self.back_to_inbox(i))
                     self.add(acts, _("Done"), lambda i=tid: self.mark_done(i))
                     self.add(acts, _("Delete"), lambda i=tid: self.delete(i))
 
@@ -3754,6 +3770,18 @@ def start_mac_gui():
         def mark_done(self, task_id):
             store.update(task_id, status="done")
             self.refresh(force=True)
+
+        def back_to_inbox(self, task_id):
+            title, why = back_to_inbox_prompt()
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(title)
+            alert.setInformativeText_(why)
+            alert.addButtonWithTitle_(_("Move to the ideabox"))
+            alert.addButtonWithTitle_(_("Cancel"))
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            if alert.runModal() == 1000:
+                store.update(task_id, target=None)
+                self.refresh(force=True)
 
         def delete(self, task_id):
             store.delete(task_id)
@@ -4379,8 +4407,10 @@ def start_gui(use_statusicon=False):
             card.pack_start(div, False, False, 0)
 
             bar2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            hint = Gtk.Label(label=_("Enter: Add  •  Ctrl+Enter: Add + Send  •  "
-                                     "Shift+Enter: Newline  •  Ctrl+V: Image"),
+            hint = Gtk.Label(label=_("Enter: Add  •  Shift+Enter: Newline  •  Ctrl+V: Image")
+                             if sess["target"] == INBOX else
+                             _("Enter: Add  •  Ctrl+Enter: Add + Send  •  "
+                               "Shift+Enter: Newline  •  Ctrl+V: Image"),
                              xalign=0)
             hint.get_style_context().add_class("jd-hint")
             hint.set_ellipsize(Pango.EllipsizeMode.END)
@@ -4492,12 +4522,13 @@ def start_gui(use_statusicon=False):
             self.send_btn = Gtk.Button()
             self.send_btn.add(send_box)
             self.send_btn.get_style_context().add_class("jd-send")
-            if sess["target"] == INBOX:
-                self.send_lbl.set_text(_("SEND NEXT TASK"))
-                self.send_btn.set_tooltip_text(
-                    _("Inbox notes have no target. Give one a session with ✎."))
             self.send_btn.connect("clicked", lambda *_: self.app.send_next(self.key()))
             foot.pack_end(self.send_btn, False, False, 0)
+            if sess["target"] == INBOX:
+                # Nothing runs from the inbox: a note is handed to a session
+                # first, and that session's page sends it.
+                foot.set_no_show_all(True)
+                foot.hide()
             inner.pack_start(foot, False, False, 0)
 
         def on_more(self, btn):
@@ -4645,7 +4676,7 @@ def start_gui(use_statusicon=False):
             buf.set_text("")
             self.star.set_active(False)
             self.app.request_refresh()
-            if send and task:
+            if send and task and tgt is not None:
                 self.app.send_task(task["id"])
 
         def refresh(self):
@@ -4864,6 +4895,18 @@ def start_gui(use_statusicon=False):
             box.pack_end(mk("✕", _("Delete"),
                             lambda *_: (store.delete(t["id"]), self.app.request_refresh())),
                          False, False, 0)
+            if self.key() == INBOX:
+                # An inbox note is not run or finished here; it is handed to
+                # a session, edited, or dropped.
+                box.pack_end(mk("✎", _("Edit (text, session, star)"),
+                                lambda *_: self.app.edit_task(t["id"])),
+                             False, False, 0)
+                hand = mk("→", _("Hand to a session…"),
+                          lambda b: self.hand_menu(b, t["id"]))
+                hand.set_sensitive(bool(self.app.live_sessions()))
+                box.pack_end(hand, False, False, 0)
+                row.add(box)
+                return row
             box.pack_end(mk("✓", _("Done"),
                             lambda *_: (store.update(t["id"], status="done"),
                                         self.app.request_refresh())),
@@ -4871,15 +4914,25 @@ def start_gui(use_statusicon=False):
             box.pack_end(mk("✎", _("Edit (text, session, star)"),
                             lambda *_: self.app.edit_task(t["id"])),
                          False, False, 0)
-            if self.key() != INBOX and t.get("status") == "pending":
+            if t.get("status") == "pending":
                 box.pack_end(mk("⇄", _("Back to the ideabox"),
-                                lambda *_: (store.update(t["id"], target=None),
-                                            self.app.request_refresh())),
+                                lambda *_: self.app.back_to_inbox(t["id"])),
                              False, False, 0)
             box.pack_end(mk("▶", _("Send"), lambda *_: self.app.send_task(t["id"])),
                          False, False, 0)
             row.add(box)
             return row
+
+        def hand_menu(self, btn, task_id):
+            """Pick the live session an inbox note goes to."""
+            menu = Gtk.Menu()
+            for sess in self.app.live_sessions():
+                mi = Gtk.MenuItem.new_with_label("%s  (%s)" % (sess["label"], sess["target"]))
+                mi.connect("activate", lambda _w, tg=sess["target"]:
+                           (store.update(task_id, target=tg), self.app.request_refresh()))
+                menu.append(mi)
+            menu.show_all()
+            menu.popup_at_widget(btn, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
 
     # ------------------------------------------------------------------ #
 
@@ -5680,6 +5733,26 @@ def start_gui(use_statusicon=False):
             notify("ccdo: " + (_("sent") if ok else _("could not send")),
                    "%s\n%s" % (task["text"].splitlines()[0][:80], msg), cfg)
             self.request_refresh()
+
+        def live_sessions(self):
+            return [s for s in self.sessions
+                    if s.get("live") and s["target"] != INBOX]
+
+        def back_to_inbox(self, task_id):
+            """Ask first: the note leaves the queue the user is looking at."""
+            title, why = back_to_inbox_prompt()
+            dlg = Gtk.MessageDialog(transient_for=self.parent_window(), modal=True,
+                                    message_type=Gtk.MessageType.QUESTION,
+                                    buttons=Gtk.ButtonsType.NONE, text=title)
+            dlg.format_secondary_text(why)
+            dlg.add_button(_("Cancel"), Gtk.ResponseType.CANCEL)
+            dlg.add_button(_("Move to the ideabox"), Gtk.ResponseType.OK)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            answer = dlg.run()
+            dlg.destroy()
+            if answer == Gtk.ResponseType.OK:
+                store.update(task_id, target=None)
+                self.request_refresh()
 
         def send_next(self, target=None):
             t = store.next_pending(target)
