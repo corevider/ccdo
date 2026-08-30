@@ -435,6 +435,17 @@ the keystrokes would answer the prompt. The `⋮` menu holds only what is about
 that session; settings, the queue file and the decision log are under the
 menu button in the title bar.
 
+### Open the session's terminal
+
+The terminal button beside `⋮` on a session's page (and **Open the session's
+terminal** in the tray and menu bar menus) shows the session where it runs.
+On X11 the window already attached to it comes to the front (`xdotool`); on
+Wayland, where no program may raise another's window, a new terminal window
+attaches to the tmux session instead. `terminal_command` in the settings
+picks the terminal: `auto` tries ptyxis, kitty, alacritty, gnome-terminal and
+x-terminal-emulator in turn, or give a command with `{cmd}` standing for what
+to run, e.g. `kitty -e sh -c {cmd}`. On macOS Terminal.app is used.
+
 ### The status line
 
 `ccdo install-hooks` also routes Claude Code's status line through ccdo:
@@ -888,6 +899,7 @@ at the bottom opens it. Keys you added by hand are preserved when saving.
 | `skip_advance_on_question` | `true` | hold back when Claude ended with a question |
 | `question_patterns` | `[]` | extra question patterns (regex) |
 | `check_updates` | `true` | look for a newer release at startup and every hour |
+| `terminal_command` | `"auto"` | terminal for the "open terminal" button; `auto` picks one installed, or a command with `{cmd}` |
 | `statusline_chips` | `true` | keep the status line's facts and show them under a session's title |
 | `statusline_own_line` | `true` | draw a plain status line in the terminal when there is no other one |
 | `language` | `"auto"` | `auto` follows the desktop, or a code such as `en`, `tr` |

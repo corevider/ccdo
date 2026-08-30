@@ -467,6 +467,15 @@ r.check(color_head is not None and color_head.submenu.titles() == list(jd.CLAUDE
         "the session offers Claude Code's colors", str(color_head.submenu.titles() if color_head else sub))
 r.check(any(i.title == "Rename in Claude Code…" for i in session_item.submenu.items),
         "and a rename")
+opened = []
+real_open = jd.open_session_terminal
+jd.open_session_terminal = lambda cfg, target: (opened.append(target), (True, "ok"))[1]
+try:
+    term_item = next(i for i in session_item.submenu.items if i.title == "Open the session's terminal")
+    jd._MAC_ACTIONS[term_item.tag()]()
+finally:
+    jd.open_session_terminal = real_open
+r.check(opened == ["%9"], "the session entry can open its terminal", str(opened))
 typed = []
 real_send = jd.send_tmux
 jd.send_tmux = lambda cfg, target, payload: (typed.append((target, payload)), (True, "ok"))[1]

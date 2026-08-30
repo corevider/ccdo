@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import socket
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,7 @@ DEFAULT_CONFIG = {
     "language": "auto",              # auto = the desktop language; en, tr, ...
     "use_claude_session_name": True, # take the tab name from Claude Code
     "use_claude_theme_color": True,  # take the color from the Claude Code theme
+    "terminal_command": "auto",      # how "open terminal" starts one; {cmd} = what to run
     "use_claude_agent_color": True,  # take the color from /color
     "window_keep_above": True,       # keep the window on top
     "window_utility_hint": False,    # UTILITY hint (troublesome on some WMs)
@@ -969,6 +971,9 @@ SETTINGS_SCHEMA = (
          "If you ran /color in the session, the tab uses that color."),
         ("use_claude_theme_color", "bool", "Take the color from the Claude Code theme",
          "The theme's claude accent, for sessions on a custom theme."),
+        ("terminal_command", "str", "Terminal for the 'open terminal' button",
+         "auto picks ptyxis, kitty, alacritty, gnome-terminal or "
+         "x-terminal-emulator. Or a command with {cmd}, e.g. kitty -e sh -c {cmd}"),
         ("statusline_chips", "bool", "Show the status line's facts under the title",
          "Model, context, cost, limits and branch, as Claude Code reports them "
          "to its status line."),
@@ -1855,6 +1860,91 @@ def remember_cwd(reg, sid, cwd):
         return
     reg.upsert(sid, cwd=cwd,
                label=rec.get("label") or os.path.basename(cwd.rstrip("/")) or None)
+
+
+TERMINALS = (
+    ("ptyxis", ["--new-window", "-x", "{cmd}"]),
+    ("kitty", ["-e", "sh", "-c", "{cmd}"]),
+    ("alacritty", ["-e", "sh", "-c", "{cmd}"]),
+    ("gnome-terminal", ["--", "sh", "-c", "{cmd}"]),
+    ("x-terminal-emulator", ["-e", "sh", "-c", "{cmd}"]),
+)
+
+
+def terminal_argv(cfg, cmd, which=shutil.which):
+    """The argv that opens a terminal running `cmd`, or None with nothing found.
+
+    The setting may name the command, with {cmd} standing for what to run;
+    'auto' takes the first terminal installed. macOS uses Terminal.app.
+    """
+    tpl = str((cfg or {}).get("terminal_command") or "auto").strip()
+    if tpl and tpl != "auto":
+        return [cmd if part == "{cmd}" else part for part in shlex.split(tpl)]
+    if IS_MAC:
+        return ["osascript",
+                "-e", 'tell application "Terminal" to do script %s' % applescript_string(cmd),
+                "-e", 'tell application "Terminal" to activate']
+    for exe, args in TERMINALS:
+        if which(exe):
+            return [exe] + [cmd if a == "{cmd}" else a for a in args]
+    return None
+
+
+def tmux_session_of(target):
+    """The tmux session a target lives in: 'sess:0.0' -> 'sess', '%7' -> asked."""
+    target = str(target or "")
+    if not target:
+        return ""
+    if not target.startswith("%"):
+        return target.split(":", 1)[0]
+    rc, out, __ = run_cmd(["tmux", "display", "-p", "-t", target, "#{session_name}"])
+    return out.strip() if rc == 0 else ""
+
+
+def raise_terminal_window(session):
+    """On X11, bring the window of the client attached to `session` up.
+
+    The tmux client's ancestors are the shell and the terminal; xdotool
+    finds a window by any of their pids. Wayland offers no such thing, so
+    this returns False there and the caller opens a fresh terminal.
+    """
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland" or not shutil.which("xdotool"):
+        return False
+    rc, out, __ = run_cmd(["tmux", "list-clients", "-t", session, "-F", "#{client_pid}"])
+    if rc != 0:
+        return False
+    for pid in out.split():
+        for _ in range(4):
+            rc, wins, __ = run_cmd(["xdotool", "search", "--pid", pid])
+            if rc == 0 and wins.split():
+                run_cmd(["xdotool", "windowactivate", wins.split()[-1]])
+                return True
+            rc, parent, __ = run_cmd(["ps", "-o", "ppid=", "-p", pid])
+            pid = parent.strip()
+            if rc != 0 or not pid or pid == "1":
+                break
+    return False
+
+
+def open_session_terminal(cfg, target):
+    """Show the session's terminal: the pane is selected, and either the
+    window that already shows it comes up or a new terminal attaches."""
+    session = tmux_session_of(target)
+    if not session:
+        return False, _("no tmux session for %s") % target
+    run_cmd(["tmux", "select-window", "-t", target])
+    run_cmd(["tmux", "select-pane", "-t", target])
+    if raise_terminal_window(session):
+        return True, session
+    argv = terminal_argv(cfg, "tmux attach -t %s" % shlex.quote(session))
+    if not argv:
+        return False, _("no terminal found; set terminal_command in the settings")
+    try:
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
+        return False, str(e)
+    return True, session
 
 
 def git_branch(path):
@@ -3994,6 +4084,8 @@ def start_mac_gui():
                     self.add(sub, _("Send next task"),
                              lambda t=target: self.send_next(t), bool(tasks))
                     if is_tmux_target(target):
+                        self.add(sub, _("Open the session's terminal"),
+                                 lambda t=target: self.show_terminal(t))
                         ok = can_take_command(sess)
                         self.add(sub, _("Rename in Claude Code…"),
                                  lambda t=target, name=sess["label"]:
@@ -4083,6 +4175,11 @@ def start_mac_gui():
         def mark_done(self, task_id):
             store.update(task_id, status="done")
             self.refresh(force=True)
+
+        def show_terminal(self, target):
+            ok, msg = open_session_terminal(cfg, target)
+            if not ok:
+                notify("ccdo", msg, cfg)
 
         def rename_session(self, target, label):
             """Ask for a name in an alert and type /rename into the session."""
@@ -4688,6 +4785,15 @@ def start_gui(use_statusicon=False):
             more.set_tooltip_text(_("Session actions"))
             more.connect("clicked", self.on_more)
             head.pack_end(more, False, False, 0)
+            if sess.get("live") and is_tmux_target(sess["target"]):
+                term = Gtk.Button()
+                term.set_image(Gtk.Image.new_from_icon_name(
+                    "utilities-terminal-symbolic", Gtk.IconSize.BUTTON))
+                term.set_relief(Gtk.ReliefStyle.NONE)
+                term.get_style_context().add_class("jd-more")
+                term.set_tooltip_text(_("Open the session's terminal"))
+                term.connect("clicked", lambda *_: self.app.show_terminal(self.key()))
+                head.pack_end(term, False, False, 0)
             self.state_lbl = Gtk.Label(label="", xalign=1)
             self.state_lbl.get_style_context().add_class("jd-sub")
             head.pack_end(self.state_lbl, False, False, 0)
@@ -6214,6 +6320,11 @@ def start_gui(use_statusicon=False):
                 store.update(task_id, target=None)
                 self.request_refresh()
 
+        def show_terminal(self, target):
+            ok, msg = open_session_terminal(cfg, target)
+            if not ok:
+                notify("ccdo", msg, cfg)
+
         def rename_session(self, target, label):
             """Ask for a name and type /rename into the session."""
             dlg = Gtk.Dialog(title=_("Rename in Claude Code"),
@@ -6575,6 +6686,8 @@ def start_gui(use_statusicon=False):
                     item("▶  " + _("Send next task"),
                          lambda tg=target: self.send_next(tg), bool(tasks), sub)
                     if is_tmux_target(target):
+                        item("⌨  " + _("Open the session's terminal"),
+                             lambda tg=target: self.show_terminal(tg), True, sub)
                         ok = can_take_command(s)
                         item(_("Rename in Claude Code…"),
                              lambda tg=target, lb=s["label"]: self.rename_session(tg, lb),
