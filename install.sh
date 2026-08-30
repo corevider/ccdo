@@ -207,6 +207,14 @@ else
   "$BIN/ccdo" install-hooks || echo "!! could not install the hooks — run 'ccdo install-hooks'"
 fi
 
+# On GNOME Wayland no program may raise another's window; the Window Calls
+# extension lets ccdo bring a session's own terminal window up. The Shell
+# asks before installing, so this is a hint rather than a step.
+if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] && case "${XDG_CURRENT_DESKTOP:-}" in *GNOME*) true;; *) false;; esac; then
+  echo "==> GNOME Wayland: to let ccdo raise a session's terminal window, run"
+  echo "    ccdo install-window-calls"
+fi
+
 cat <<'EOF'
 
 Installed. Restart any running Claude Code sessions so they pick up the hooks.

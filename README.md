@@ -448,6 +448,8 @@ The pane is selected in tmux, then the first of these that works:
    whose title names the session (ccdo switches tmux titles on for that
    session so there is a title to match). One session per terminal window is
    what makes this exact; tabs in one window cannot be told apart.
+   `ccdo install-window-calls` asks the Shell to install it — confirm in the
+   dialog it shows; no logout needed.
 3. **Wayland without it, with `terminal_switch_client: true`** (off by
    default) — the click in ccdo yields an activation token, so the terminal
    comes up, and whichever tmux tab you used last switches to the session.
@@ -815,6 +817,7 @@ finish something.
 ccdo add "text" [--target api] [--project name]   # --target accepts a session name
 ccdo install-hooks [--dry-run]      # install the Claude Code hooks and the status line
 ccdo statusline [-- <command>]      # status line entry point (Claude Code calls this, not you)
+ccdo install-window-calls           # GNOME Wayland: the extension that lets ccdo raise a session's window
 ccdo sessions                       # live sessions: color, label, target, state
 ccdo auto <target> on|off           # switch auto (written per directory)
 ccdo hook <event>                   # hook entry point (Claude Code calls this, not you)

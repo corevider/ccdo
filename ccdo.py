@@ -2015,6 +2015,29 @@ def shell_windows_proxy():
         return None
 
 
+WINDOW_CALLS_UUID = "window-calls@domandoman.xyz"
+
+
+def install_window_calls():
+    """Ask GNOME Shell to install the Window Calls extension.
+
+    The Shell downloads it, shows its own confirmation and loads it at
+    once — the one route that needs no logout on Wayland. Returns the
+    Shell's answer: 'successful', 'cancelled', or an error text.
+    """
+    try:
+        from gi.repository import Gio, GLib
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SESSION, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+            "org.gnome.Shell", "/org/gnome/Shell", "org.gnome.Shell.Extensions", None)
+        answer = proxy.call_sync("InstallRemoteExtension",
+                                 GLib.Variant("(s)", (WINDOW_CALLS_UUID,)),
+                                 0, 300000, None).unpack()[0]
+        return str(answer)
+    except Exception as e:
+        return "error: %s" % e
+
+
 def focus_terminal_via_shell(session):
     """With the Window Calls extension, raise the terminal window whose title
     names the session. tmux titles are switched on for the session so the
@@ -7144,6 +7167,26 @@ def main(argv):
 
     if cmd == "statusline":
         return run_statusline(rest, cfg)
+
+    if cmd == "install-window-calls":
+        if shell_windows_proxy() is not None:
+            print(_("Window Calls is already installed and running."))
+            return 0
+        on_disk = os.path.join(HOME, ".local", "share", "gnome-shell", "extensions",
+                               WINDOW_CALLS_UUID)
+        if os.path.isdir(on_disk):
+            # Installing again over a loaded-but-broken copy only stacks
+            # another error; a fresh login loads what is there.
+            print(_("Window Calls is installed but not running. Log out and back in "
+                    "so GNOME Shell loads it (Wayland cannot restart the Shell)."))
+            return 1
+        print(_("Asking GNOME Shell to install Window Calls — confirm in the dialog on screen…"))
+        answer = install_window_calls()
+        print(answer)
+        if answer == "successful":
+            print(_("Done: 'open the session's terminal' now raises the session's own window."))
+            return 0
+        return 1
 
     if cmd == "sessions":
         ss = discover_sessions(cfg)

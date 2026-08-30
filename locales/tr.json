@@ -223,6 +223,10 @@
   "no terminal found; set terminal_command in the settings": "terminal bulunamadı; ayarlardan terminal_command belirleyin",
   "Switch the last-used terminal tab to the session": "En son kullanılan terminal sekmesini oturuma çevir",
   "Wayland only, off by default: the terminal comes up and whichever tmux tab you used last switches to the session — that tab, not the session's own. Off: a new terminal attaches instead.": "Yalnızca Wayland, öntanımlı kapalı: terminal öne gelir ve en son kullandığınız tmux sekmesi (oturumun kendi sekmesi değil) oturuma geçer. Kapalıysa yeni bir terminal bağlanır.",
+  "Window Calls is already installed and running.": "Window Calls zaten kurulu ve çalışıyor.",
+  "Window Calls is installed but not running. Log out and back in so GNOME Shell loads it (Wayland cannot restart the Shell).": "Window Calls kurulu ama çalışmıyor. GNOME Shell'in yüklemesi için oturumu kapatıp yeniden açın (Wayland'da Shell yeniden başlatılamaz).",
+  "Asking GNOME Shell to install Window Calls — confirm in the dialog on screen…": "GNOME Shell'den Window Calls'ı kurması isteniyor — ekrandaki diyalogda onaylayın…",
+  "Done: 'open the session's terminal' now raises the session's own window.": "Tamam: 'oturumun terminalini aç' artık oturumun kendi penceresini öne getirir.",
   "Terminal for the 'open terminal' button": "'Terminali aç' düğmesinin kullanacağı terminal",
   "auto picks ptyxis, kitty, alacritty, gnome-terminal or x-terminal-emulator. Or a command with {cmd}, e.g. kitty -e sh -c {cmd}": "auto sırayla ptyxis, kitty, alacritty, gnome-terminal ya da x-terminal-emulator seçer. Ya da {cmd} içeren bir komut, örn. kitty -e sh -c {cmd}"
 }
