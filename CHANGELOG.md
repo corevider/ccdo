@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.49] - 2026-08-30
+
+### Fixed
+
+- **gui:** no terminal button on the ideabox (184f0cd)
 ## [1.0.48] - 2026-08-30
 
 ### Added
