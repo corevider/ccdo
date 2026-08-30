@@ -462,6 +462,19 @@ r.check(any(t.startswith("Move the waiting notes to the ideabox (2)") for t in s
         "the session can hand all its waiting notes back", str(sub))
 r.check(not any(t.startswith("Close this session") for t in sub),
         "a live session has no close action")
+color_head = next((i for i in session_item.submenu.items if i.title == "Color in Claude Code"), None)
+r.check(color_head is not None and color_head.submenu.titles() == list(jd.CLAUDE_COLORS) + ["default"],
+        "the session offers Claude Code's colors", str(color_head.submenu.titles() if color_head else sub))
+r.check(any(i.title == "Rename in Claude Code…" for i in session_item.submenu.items),
+        "and a rename")
+typed = []
+real_send = jd.send_tmux
+jd.send_tmux = lambda cfg, target, payload: (typed.append((target, payload)), (True, "ok"))[1]
+try:
+    jd._MAC_ACTIONS[color_head.submenu.items[1].tag()]()
+finally:
+    jd.send_tmux = real_send
+r.check(typed == [("%9", "/color blue")], "picking a color types /color into the pane", str(typed))
 
 r.check(state["status"].button().tooltip and "2" in state["status"].button().tooltip,
         "the tooltip carries the count, since the icon has no badge",

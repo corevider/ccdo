@@ -1804,6 +1804,58 @@ def inbox_help_lines():
     ]
 
 
+CLAUDE_COLORS = ("red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan")
+
+
+def slash_rename(name):
+    """'/rename <name>' with the name made safe for Claude Code, or ''.
+
+    Claude Code takes letters, digits, '-' and '_'; anything else, spaces
+    included, becomes a hyphen.
+    """
+    clean = re.sub(r"[^A-Za-z0-9_-]+", "-", (name or "").strip()).strip("-")
+    return "/rename %s" % clean if clean else ""
+
+
+def slash_color(name):
+    """'/color <name>' for one of Claude Code's colors or 'default', else ''."""
+    name = (name or "").strip().lower()
+    return "/color %s" % name if name in CLAUDE_COLORS + ("default",) else ""
+
+
+def can_take_command(sess):
+    """May a slash command be typed into this session right now?
+
+    Only an idle tmux pane: busy means Claude is mid-turn, waiting or asking
+    means the prompt holds a question the text would answer.
+    """
+    return bool(sess.get("live", True) and is_tmux_target(sess.get("target"))
+                and (sess.get("state") or "unknown") in ("idle", "unknown"))
+
+
+def send_claude_command(cfg, target, command):
+    """Type a slash command into the session and submit it."""
+    if not command:
+        return False, _("nothing to send")
+    return send_tmux(dict(cfg, auto_enter=True), target, command)
+
+
+def remember_cwd(reg, sid, cwd):
+    """Fill in a record's directory once a later event carries it.
+
+    A session that started before the hooks were installed has a record made
+    by UserPromptSubmit or Stop, which know no directory; the window showed
+    no path for it while other tabs had one.
+    """
+    if not sid or not cwd:
+        return
+    rec = reg.get(sid)
+    if rec is None or rec.get("cwd"):
+        return
+    reg.upsert(sid, cwd=cwd,
+               label=rec.get("label") or os.path.basename(cwd.rstrip("/")) or None)
+
+
 def git_branch(path):
     """The checked-out branch in `path`, a short hash when detached, else ''."""
     if not path or not os.path.isdir(path):
@@ -2813,6 +2865,7 @@ def hook_user_prompt(cfg, store, reg, data):
     # lifts.
     reg.upsert(data.get("session_id"), state="busy", advance_count=0,
                transcript=data.get("transcript_path") or None)
+    remember_cwd(reg, data.get("session_id"), data.get("cwd"))
     ipc_send("refresh")
     return {}
 
@@ -3025,6 +3078,7 @@ def hook_stop(cfg, store, reg, data):
 
     reg.upsert(sid, state="asking" if asked else "idle", target=target,
                transcript=tpath)
+    remember_cwd(reg, sid, data.get("cwd"))
     # The note this turn was about is finished with the turn — unless the
     # turn ended in a question, in which case the note is still open and
     # the user's answer continues it.
@@ -3159,6 +3213,7 @@ def run_statusline(rest, cfg=None):
         if sid and cfg.get("statusline_chips", True) and reg.get(sid) is not None:
             cwd = ((data.get("workspace") or {}).get("current_dir")
                    or data.get("cwd") or "")
+            remember_cwd(reg, sid, cwd)
             reg.upsert(sid, status=statusline_summary(data, git_branch(cwd)))
             ipc_send("refresh", timeout=0.3)
     except Exception as e:
@@ -3937,6 +3992,19 @@ def start_mac_gui():
                              note_window(t, name))
                     self.add(sub, _("Send next task"),
                              lambda t=target: self.send_next(t), bool(tasks))
+                    if is_tmux_target(target):
+                        ok = can_take_command(sess)
+                        self.add(sub, _("Rename in Claude Code…"),
+                                 lambda t=target, name=sess["label"]:
+                                 self.rename_session(t, name), ok)
+                        head = self.add(sub, _("Color in Claude Code"), None)
+                        colors = NSMenu.alloc().init()
+                        colors.setAutoenablesItems_(False)
+                        head.setSubmenu_(colors)
+                        head.setEnabled_(ok)
+                        for name in CLAUDE_COLORS + ("default",):
+                            self.add(colors, name,
+                                     lambda t=target, c=name: self.color_session(t, c))
                     self.separator(sub)
                 if target != INBOX and tasks:
                     self.add(sub, _("Move the waiting notes to the ideabox (%d)") % len(tasks),
@@ -4013,6 +4081,31 @@ def start_mac_gui():
 
         def mark_done(self, task_id):
             store.update(task_id, status="done")
+            self.refresh(force=True)
+
+        def rename_session(self, target, label):
+            """Ask for a name in an alert and type /rename into the session."""
+            from AppKit import NSTextField
+            from Foundation import NSMakeRect
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(_("Rename in Claude Code"))
+            alert.setInformativeText_(_("Letters, digits, - and _; spaces become -."))
+            field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 280, 24))
+            field.setStringValue_(label or "")
+            alert.setAccessoryView_(field)
+            alert.addButtonWithTitle_(_("Rename"))
+            alert.addButtonWithTitle_(_("Cancel"))
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            if alert.runModal() == 1000:
+                self.claude_command(target, slash_rename(str(field.stringValue())))
+
+        def color_session(self, target, color):
+            self.claude_command(target, slash_color(color))
+
+        def claude_command(self, target, command):
+            ok, msg = send_claude_command(cfg, target, command)
+            if not ok:
+                notify("ccdo", _("could not send") + ": " + msg, cfg)
             self.refresh(force=True)
 
         def back_to_inbox(self, task_id):
@@ -4612,14 +4705,13 @@ def start_gui(use_statusicon=False):
                 # to a few lines on what the page is for.
                 card.pack_start(self.build_inbox_help(), False, False, 0)
 
-            self.path_lbl = None
-            if sess.get("cwd"):
-                self.path_lbl = Gtk.Label(xalign=0)
-                self.path_lbl.get_style_context().add_class("jd-sub")
-                self.path_lbl.set_ellipsize(Pango.EllipsizeMode.START)
-                self.path_lbl.set_max_width_chars(34)
-                self.path_lbl.set_width_chars(10)
-                card.pack_start(self.path_lbl, False, False, 0)
+            self.path_lbl = Gtk.Label(xalign=0)
+            self.path_lbl.get_style_context().add_class("jd-sub")
+            self.path_lbl.set_ellipsize(Pango.EllipsizeMode.START)
+            self.path_lbl.set_max_width_chars(34)
+            self.path_lbl.set_width_chars(10)
+            self.path_lbl.set_no_show_all(True)
+            card.pack_start(self.path_lbl, False, False, 0)
 
             self.apply_session(sess)
 
@@ -4811,9 +4903,38 @@ def start_gui(use_statusicon=False):
                 mi.connect("activate",
                            lambda _w, f=cb: GLib.idle_add(self.app._once(f)))
                 menu.append(mi)
+            if k != INBOX and self.sess.get("live") and is_tmux_target(k):
+                self.add_claude_items(menu, k)
             menu.show_all()
             menu.popup_at_widget(btn, Gdk.Gravity.SOUTH_EAST,
                                  Gdk.Gravity.NORTH_EAST, None)
+
+        def add_claude_items(self, menu, k):
+            """Rename and color, typed into Claude Code as /rename and /color.
+
+            The tab follows by itself: the name and the color are read back
+            out of the transcript. Only an idle session takes them.
+            """
+            ok = can_take_command(self.sess)
+            why = "" if ok else _("Wait until the session is idle.")
+            menu.append(Gtk.SeparatorMenuItem())
+            mi = Gtk.MenuItem.new_with_label(_("Rename in Claude Code…"))
+            mi.set_sensitive(ok)
+            mi.set_tooltip_text(why)
+            mi.connect("activate", lambda *_: GLib.idle_add(
+                self.app._once(self.app.rename_session, k, self.sess.get("label"))))
+            menu.append(mi)
+            head = Gtk.MenuItem.new_with_label(_("Color in Claude Code"))
+            head.set_sensitive(ok)
+            head.set_tooltip_text(why)
+            colors = Gtk.Menu()
+            for name in CLAUDE_COLORS + ("default",):
+                ci = Gtk.MenuItem.new_with_label(name)
+                ci.connect("activate", lambda _w, c=name: GLib.idle_add(
+                    self.app._once(self.app.color_session, k, c)))
+                colors.append(ci)
+            head.set_submenu(colors)
+            menu.append(head)
 
         def on_star(self, btn):
             btn.set_image(Gtk.Image.new_from_icon_name(
@@ -4852,8 +4973,8 @@ def start_gui(use_statusicon=False):
             self.sess = sess
             self.title_lbl.set_text((sess.get("label") or "?").upper())
             self.build_chips(sess)
-            if self.path_lbl is not None:
-                self.path_lbl.set_text(sess.get("cwd") or "")
+            self.path_lbl.set_text(sess.get("cwd") or "")
+            self.path_lbl.set_visible(bool(sess.get("cwd")))
             ctx = self.get_style_context()
             if sess.get("live"):
                 ctx.remove_class("jd-dead")
@@ -6057,6 +6178,46 @@ def start_gui(use_statusicon=False):
                 store.update(task_id, target=None)
                 self.request_refresh()
 
+        def rename_session(self, target, label):
+            """Ask for a name and type /rename into the session."""
+            dlg = Gtk.Dialog(title=_("Rename in Claude Code"),
+                             transient_for=self.parent_window(), modal=True)
+            add_headerbar(dlg, _("Rename in Claude Code"))
+            dlg.get_style_context().add_class("jd-window")
+            mark_body(dlg)
+            box = dlg.get_content_area()
+            box.set_spacing(8)
+            box.set_border_width(14)
+            hint = Gtk.Label(label=_("Letters, digits, - and _; spaces become -."),
+                             xalign=0)
+            hint.get_style_context().add_class("jd-hint")
+            box.pack_start(hint, False, False, 0)
+            entry = Gtk.Entry()
+            entry.set_text(label or "")
+            entry.set_activates_default(True)
+            box.pack_start(entry, False, False, 0)
+            dlg.add_button(_("Cancel"), Gtk.ResponseType.CANCEL)
+            dlg.add_button(_("Rename"), Gtk.ResponseType.OK).get_style_context(
+                ).add_class("suggested-action")
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            dlg.show_all()
+            answer = dlg.run()
+            name = entry.get_text()
+            dlg.destroy()
+            if answer == Gtk.ResponseType.OK:
+                self.claude_command(target, slash_rename(name))
+
+        def color_session(self, target, color):
+            self.claude_command(target, slash_color(color))
+
+        def claude_command(self, target, command):
+            ok, msg = send_claude_command(cfg, target, command)
+            if not ok:
+                notify("ccdo", _("could not send") + ": " + msg, cfg)
+                return
+            # The transcript carries the new name and color a moment later.
+            GLib.timeout_add(1500, self._once(self.discover, True))
+
         def close_tab(self, target):
             """Empty a closed session's queue, after asking; the tab then goes."""
             sess = next((s for s in self.sessions if s["target"] == target), None)
@@ -6377,6 +6538,19 @@ def start_gui(use_statusicon=False):
                          lambda tg=target: self.quick_note(tg), True, sub)
                     item("▶  " + _("Send next task"),
                          lambda tg=target: self.send_next(tg), bool(tasks), sub)
+                    if is_tmux_target(target):
+                        ok = can_take_command(s)
+                        item(_("Rename in Claude Code…"),
+                             lambda tg=target, lb=s["label"]: self.rename_session(tg, lb),
+                             ok, sub)
+                        head = Gtk.MenuItem.new_with_label(_("Color in Claude Code"))
+                        head.set_sensitive(ok)
+                        colors = Gtk.Menu()
+                        head.set_submenu(colors)
+                        sub.append(head)
+                        for name in CLAUDE_COLORS + ("default",):
+                            item(name, lambda tg=target, c=name: self.color_session(tg, c),
+                                 True, colors)
                     sub.append(Gtk.SeparatorMenuItem())
                 if target != INBOX and tasks:
                     item("⇄  " + _("Move the waiting notes to the ideabox (%d)") % len(tasks),

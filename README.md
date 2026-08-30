@@ -423,6 +423,15 @@ guessing layer is switched off entirely:
 If the `SOURCE` column in `ccdo sessions` says `hook` the match is exact;
 `scan` means it is still a guess from the tmux scan.
 
+### Rename and color from ccdo
+
+A live session's `⋮` menu (and its entry in the tray and menu bar menus) has
+**Rename in Claude Code…** and **Color in Claude Code**: ccdo types `/rename
+<name>` or `/color <name>` into the session's pane, and the tab follows a
+moment later, since the name and the color are read back out of the
+transcript. Only an idle session takes them — a busy one is mid-turn, and a
+waiting one holds a question the text would answer.
+
 ### The status line
 
 `ccdo install-hooks` also routes Claude Code's status line through ccdo:

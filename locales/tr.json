@@ -208,5 +208,12 @@
   "Show the status line's facts under the title": "Durum satırı bilgilerini başlığın altında göster",
   "Model, context, cost, limits and branch, as Claude Code reports them to its status line.": "Model, bağlam, maliyet, limitler ve dal; Claude Code'un durum satırına bildirdiği gibi.",
   "Draw a plain status line when there is no other": "Başka durum satırı yoksa sade bir tane çiz",
-  "Only matters without a status line of your own; with one, ccdo passes it through untouched.": "Yalnızca kendi durum satırınız yoksa önemli; varsa ccdo onu olduğu gibi geçirir."
+  "Only matters without a status line of your own; with one, ccdo passes it through untouched.": "Yalnızca kendi durum satırınız yoksa önemli; varsa ccdo onu olduğu gibi geçirir.",
+  "nothing to send": "gönderilecek bir şey yok",
+  "Wait until the session is idle.": "Oturum boşa çıkana kadar bekleyin.",
+  "Rename in Claude Code…": "Claude Code'da yeniden adlandır…",
+  "Rename in Claude Code": "Claude Code'da yeniden adlandır",
+  "Color in Claude Code": "Claude Code'da renk",
+  "Letters, digits, - and _; spaces become -.": "Harf, rakam, - ve _; boşluklar - olur.",
+  "Rename": "Yeniden adlandır"
 }
