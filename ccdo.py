@@ -45,7 +45,7 @@ import zlib
 from datetime import datetime
 
 APP_NAME = "ccdo"
-VERSION = "1.0.36"
+VERSION = "1.0.37"
 
 # The desktop half (tray, window, notifications) is Linux; the queue, the
 # hooks and the tmux delivery run anywhere Unix. Rather than sprinkle

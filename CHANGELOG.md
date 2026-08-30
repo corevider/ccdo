@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.37] - 2026-08-30
+
+### Added
+
+- **macos:** close a closed session's entry; send notes back to the ideabox (6e1a891)
 ## [1.0.36] - 2026-08-30
 
 ### Added
