@@ -435,7 +435,8 @@ status line, ccdo draws a plain one itself.
 The window then shows a row of chips under a session's title — model and
 effort, context (`ctx 125.1k · 62%`), cost so far, the five-hour and weekly
 limits (`5h 30% · 7d 36%`), when the five-hour window resets, lines added and
-removed, and the worktree — refreshed as the status line is. Sessions found by
+removed, the git branch (`⎇ main`) and the worktree — refreshed as the status
+line is. Sessions found by
 the tmux scan have no status line to report, so they show none.
 
 ### Order

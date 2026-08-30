@@ -68,7 +68,7 @@ def seed():
                                                         "cache_read_input_tokens": 116600}},
                    "rate_limits": {"five_hour": {"used_percentage": 30,
                                                  "resets_at": time.time() + 2 * 3600 + 45 * 60},
-                                   "seven_day": {"used_percentage": 36}}}))
+                                   "seven_day": {"used_percentage": 36}}}, "main"))
     reg.upsert("s2", target="sid:demo", cwd="/home/you/dev/web", state="busy",
                label="web-ui", title="web-ui")
     for text, priority in (

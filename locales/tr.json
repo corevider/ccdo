@@ -203,5 +203,6 @@
   "Close the tab": "Sekmeyi kapat",
   "ctx %s": "bağlam %s",
   "reset %s": "sıfırlama %s",
-  "From the Claude Code status line": "Claude Code durum satırından"
+  "From the Claude Code status line": "Claude Code durum satırından",
+  "worktree %s": "worktree %s"
 }

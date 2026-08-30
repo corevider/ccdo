@@ -1796,11 +1796,28 @@ def inbox_help_lines():
     ]
 
 
-def statusline_summary(data):
+def git_branch(path):
+    """The checked-out branch in `path`, a short hash when detached, else ''."""
+    if not path or not os.path.isdir(path):
+        return ""
+    for args in (["symbolic-ref", "--short", "-q", "HEAD"],
+                 ["rev-parse", "--short", "HEAD"]):
+        try:
+            out = subprocess.run(["git", "-C", path] + args, capture_output=True,
+                                 text=True, timeout=2)
+        except Exception:
+            return ""
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    return ""
+
+
+def statusline_summary(data, branch=None):
     """The facts worth keeping from Claude Code's statusline JSON.
 
     The full document is large and mostly transient; the window shows a
-    handful of numbers, so only those are written to the registry.
+    handful of numbers, so only those are written to the registry. The
+    branch is not in the document; the caller reads it from git.
     """
     def pct(node):
         v = (node or {}).get("used_percentage")
@@ -1819,7 +1836,10 @@ def statusline_summary(data):
     cost = data.get("cost") or {}
     worktree = ((data.get("worktree") or {}).get("name")
                 or (data.get("workspace") or {}).get("git_worktree") or "")
+    if branch is None:
+        branch = (data.get("worktree") or {}).get("branch") or ""
     return {
+        "branch": branch or "",
         "model": (data.get("model") or {}).get("display_name") or "",
         "effort": (data.get("effort") or {}).get("level") or "",
         "ctx_pct": pct(cw),
@@ -1890,8 +1910,10 @@ def status_chips(status, now=None):
     added, removed = status.get("lines_added"), status.get("lines_removed")
     if isinstance(added, int) and isinstance(removed, int) and (added or removed):
         chips.append("+%d −%d" % (added, removed))
+    if status.get("branch"):
+        chips.append("⎇ " + status["branch"])
     if status.get("worktree"):
-        chips.append("⎇ " + status["worktree"])
+        chips.append(_("worktree %s") % status["worktree"])
     return chips
 
 
@@ -3126,7 +3148,9 @@ def run_statusline(rest):
     try:
         reg = Registry()
         if sid and reg.get(sid) is not None:
-            reg.upsert(sid, status=statusline_summary(data))
+            cwd = ((data.get("workspace") or {}).get("current_dir")
+                   or data.get("cwd") or "")
+            reg.upsert(sid, status=statusline_summary(data, git_branch(cwd)))
             ipc_send("refresh", timeout=0.3)
     except Exception as e:
         if DEBUG:

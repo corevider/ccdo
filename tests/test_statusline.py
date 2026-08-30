@@ -45,7 +45,17 @@ r.check("ctx 125.1k · 62%" in chips, "context shows tokens and percentage", str
 r.check("$9.32" in chips, "cost to the cent", str(chips))
 r.check("5h 30% · 7d 36%" in chips, "both limit windows on one chip", str(chips))
 r.check("reset 2h 45m" in chips, "time until the five-hour window resets", str(chips))
-r.check("+185 −92" in chips and "⎇ disco-button" in chips, "lines and worktree", str(chips))
+r.check("+185 −92" in chips and "worktree disco-button" in chips, "lines and worktree", str(chips))
+r.check("⎇ " not in " ".join(chips), "no branch known, no branch chip")
+
+with_branch = jd.status_chips(jd.statusline_summary(SAMPLE, "feature/x"), now=1000000)
+r.check("⎇ feature/x" in with_branch, "the branch read from git gets its chip", str(with_branch))
+wt = jd.statusline_summary({"worktree": {"name": "wt", "branch": "worktree-wt"}})
+r.check(wt["branch"] == "worktree-wt", "a worktree session's branch comes from the document")
+r.check(jd.git_branch(jd.os.path.dirname(jd.os.path.abspath(jd.__file__))) != "",
+        "git_branch reads a checked-out repository")
+r.check(jd.git_branch("/nonexistent/dir") == "" and jd.git_branch("") == "",
+        "no directory, no branch — and no error")
 r.check(jd.status_chips({}) == [] and jd.status_chips(None) == [],
         "no status, no chips")
 r.check(jd.status_chips(jd.statusline_summary({"model": {"display_name": "Opus"}})) == ["Opus"],
