@@ -349,10 +349,18 @@ live session; otherwise it falls back to `xdotool` or the queue file. The `✎`
 button on a note gives it a session; the page itself says how to add from the
 terminal (`ccdo add "text"`, or `--target <session>` to skip the inbox).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/ideabox-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/ideabox-light.png">
+  <img src="docs/ideabox-dark.png" width="560"
+       alt="The ideabox tab: notes with no session, and how to hand them out">
+</picture>
+
 The bar at the left edge of a task row tells where the task is: grey while
 it waits its turn, blue once it has been handed to the session, amber while
 that session is busy on the latest note it received, green in the history
-once it is done. Hover the bar for the word.
+once it is done. Hover the bar for the word. A sent task's row also says
+when it went out (the day too, if that was not today).
 
 ### Attaching an image or a file
 

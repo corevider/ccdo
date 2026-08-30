@@ -1843,6 +1843,23 @@ def latest_sent_id(tasks):
     return max(sent, key=lambda t: t.get("sent_at") or "")["id"]
 
 
+def sent_stamp(sent_at, now=None):
+    """When a task went out: '14:32' today, '29 Aug 14:32' on an earlier day.
+
+    Empty when the record carries no usable time.
+    """
+    try:
+        when = datetime.fromisoformat(sent_at or "")
+    except (TypeError, ValueError):
+        return ""
+    if when.tzinfo is not None:
+        when = when.astimezone()
+    now = now or datetime.now().astimezone()
+    if when.date() == now.date():
+        return when.strftime("%H:%M")
+    return when.strftime("%d %b %H:%M")
+
+
 def task_state(task, sess=None, latest_sent=None):
     """Which stage a task is at.
 
@@ -4754,6 +4771,9 @@ def start_gui(use_statusicon=False):
             lab.get_style_context().add_class(
                 "jd-task-sent" if t.get("status") == "sent" else "jd-task")
             extra = " · " + _(TASK_STATES[state]) if state != "queued" else ""
+            stamp = sent_stamp(t.get("sent_at")) if t.get("status") == "sent" else ""
+            if stamp:
+                extra += " · " + stamp
             meta = Gtk.Label(label="%s%s" % (t["id"], extra), xalign=0)
             meta.get_style_context().add_class("jd-meta")
             col.pack_start(lab, False, False, 0)

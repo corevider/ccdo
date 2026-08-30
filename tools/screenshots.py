@@ -65,6 +65,12 @@ def seed():
             ("Split the parser out of the request handler", 0),
             ("The progress bar jumps back on slow connections", 0)):
         store.add(text, target="%3", priority=priority)
+    sent = store.pending("%3")[-1]
+    store.update(sent["id"], status="sent",
+                 sent_at=jd.datetime.now().astimezone().replace(
+                     hour=9, minute=41, second=0).isoformat(timespec="seconds"))
+    store.add("Look into that flaky nightly build")
+    store.add("Write down how the release script works")
     jd.log_event("skip_budget", target="%3",
                  task={"id": "x", "text": "Cache the search index"}, used=3, cap=3)
     jd.atomic_write(jd.UPDATE_PATH, '{"checked_at": 0, "latest": ""}\n')
@@ -80,6 +86,12 @@ def styled(widget_box, width, height, path):
     ground.add(widget_box)
     off.add(ground)
     off.show_all()
+    snap(off, path)
+    return off
+
+
+def snap(off, path):
+    """Save the offscreen window as it is now; call again after a change."""
     for _ in range(4):
         while Gtk.events_pending():
             Gtk.main_iteration()
@@ -99,8 +111,13 @@ def note_window(out, theme):
             return False
         child = win.get_child()
         win.remove(child)
-        styled(child, 560, 700,
-               os.path.join(out, "note-window-%s.png" % theme))
+        off = styled(child, 560, 700,
+                     os.path.join(out, "note-window-%s.png" % theme))
+        win.app.show_inbox()
+        # The pinned tab takes its checked look from an idle callback;
+        # the frame must not be grabbed before it has run.
+        win.app.sync_tab_accent()
+        snap(off, os.path.join(out, "ideabox-%s.png" % theme))
         Gtk.main_quit()
         return False
 
