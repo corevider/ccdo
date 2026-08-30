@@ -207,7 +207,12 @@ bundler — are not mistaken for sessions. Without `ps`, the pane command and
 title are matched as text (`pane_match`).
 
 A closed session does not lose its tab: it stays marked "closed" with its notes
-intact, and the tab comes back to life when the session reopens.
+intact, and the tab comes back to life when the session reopens. To be rid of
+it, open `⋮` on the tab and choose **Close this tab** — its waiting notes go
+back to the ideabox and its sent ones to the history, and with an empty queue
+the tab goes. The same menu on any session has **Move the waiting notes to the
+ideabox**, and every waiting note carries a `⇄` button that sends just that
+one back.
 
 ## Label and color
 
@@ -346,8 +351,9 @@ without `--target` lands there). It is pinned at the left edge of the tab
 strip: the session tabs scroll past it, the ideabox stays put, and `Ctrl+1`
 always means it. Sending from it reaches tmux only if there is exactly one
 live session; otherwise it falls back to `xdotool` or the queue file. The `✎`
-button on a note gives it a session; the page itself says how to add from the
-terminal (`ccdo add "text"`, or `--target <session>` to skip the inbox).
+button on a note gives it a session, and `⇄` on a session's note sends it back
+here; the page itself says how to add from the terminal (`ccdo add "text"`, or
+`--target <session>` to skip the inbox).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/ideabox-dark.png">

@@ -188,5 +188,8 @@
   "Open the tray menu to see what changed and update.": "Neyin değiştiğini görmek ve güncellemek için tepsi menüsünü açın.",
   "Notes with no session yet land here — from this box or the terminal:": "Henüz oturumu olmayan notlar buraya düşer — bu kutudan ya da terminalden:",
   "Hand a note to a session with ✎ (Edit → Session), or add it there straight away:": "Bir notu ✎ (Düzenle → Oturum) ile bir oturuma ver, ya da doğrudan oraya ekle:",
-  "Session names: ccdo sessions. With exactly one live session, ▶ sends an inbox note straight to it.": "Oturum adları: ccdo sessions. Tek bir canlı oturum varken ▶ ideabox notunu doğrudan ona gönderir."
+  "Session names: ccdo sessions. With exactly one live session, ▶ sends an inbox note straight to it.": "Oturum adları: ccdo sessions. Tek bir canlı oturum varken ▶ ideabox notunu doğrudan ona gönderir.",
+  "Move the waiting notes to the ideabox (%d)": "Bekleyen notları ideabox'a taşı (%d)",
+  "Close this tab: waiting notes go to the ideabox, sent ones to history": "Bu sekmeyi kapat: bekleyen notlar ideabox'a, gönderilenler geçmişe",
+  "Back to the ideabox": "ideabox'a geri al"
 }

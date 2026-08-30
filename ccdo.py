@@ -2316,6 +2316,28 @@ class Store:
         return sorted({t.get("target") for t in self.all()
                        if t.get("status") in ("pending", "sent") and t.get("target")})
 
+    def move_to_inbox(self, target):
+        """Send a session's waiting notes back to the inbox; how many moved."""
+        moved = 0
+        for t in self.pending(target):
+            if self.update(t["id"], target=None):
+                moved += 1
+        return moved
+
+    def close_target(self, target):
+        """Empty a closed session's queue so its tab can go.
+
+        Waiting notes go back to the inbox, since nobody is there to take
+        them; sent ones were handed over, so they go to history as done.
+        """
+        moved = self.move_to_inbox(target)
+        finished = 0
+        for t in self.all():
+            if t.get("target") == target and t.get("status") == "sent":
+                if self.update(t["id"], status="done"):
+                    finished += 1
+        return moved, finished
+
     def _export_markdown(self, data):
         groups = {}
         for t in data["tasks"]:
@@ -4451,11 +4473,25 @@ def start_gui(use_statusicon=False):
             menu = Gtk.Menu()
             k = self.key()
             items = [
-                ("Bu oturuma not…", lambda: self.app.quick_note(
+                (_("Note for this session…"), lambda: self.app.quick_note(
                     None if k == INBOX else k)),
+            ]
+            waiting = len(store.pending(k)) if k != INBOX else 0
+            if waiting:
+                items.append((_("Move the waiting notes to the ideabox (%d)") % waiting,
+                              lambda: (store.move_to_inbox(k),
+                                       self.app.request_refresh())))
+            if k != INBOX and not self.sess.get("live"):
+                # A closed session's tab only stays because its queue is not
+                # empty; emptying it is how the tab goes away.
+                items.append((_("Close this tab: waiting notes go to the ideabox, "
+                                "sent ones to history"),
+                              lambda: (store.close_target(k),
+                                       self.app.request_refresh())))
+            items += [
                 (_("Decision log"), lambda: open_in_editor(EVENTS_PATH)),
                 (_("Queue file"), lambda: open_in_editor(QUEUE_MD)),
-                ("Ayarlar…", self.app.open_settings),
+                (_("Settings…"), self.app.open_settings),
             ]
             for label, cb in items:
                 mi = Gtk.MenuItem.new_with_label(label)
@@ -4803,6 +4839,11 @@ def start_gui(use_statusicon=False):
             box.pack_end(mk("✎", _("Edit (text, session, star)"),
                             lambda *_: self.app.edit_task(t["id"])),
                          False, False, 0)
+            if self.key() != INBOX and t.get("status") == "pending":
+                box.pack_end(mk("⇄", _("Back to the ideabox"),
+                                lambda *_: (store.update(t["id"], target=None),
+                                            self.app.request_refresh())),
+                             False, False, 0)
             box.pack_end(mk("▶", _("Send"), lambda *_: self.app.send_task(t["id"])),
                          False, False, 0)
             row.add(box)
