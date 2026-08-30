@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.47] - 2026-08-30
+
+### Fixed
+
+- **gui:** the shortcut hint shows each key as a badge beside its action (5aa7f69)
 ## [1.0.46] - 2026-08-30
 
 ### Fixed
