@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.41] - 2026-08-30
+
+### Added
+
+- **gui:** show the status line's facts under a session's title (32bcb31)
 ## [1.0.40] - 2026-08-30
 
 ### Fixed
