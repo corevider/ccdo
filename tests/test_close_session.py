@@ -34,4 +34,8 @@ r.check(any(rec["task"]["id"] == sent["id"] for rec in jd.read_history()),
 r.check("gone:1" not in store.active_targets(), "nothing keeps the tab alive")
 r.check(inbox_note["id"] in left, "inbox notes are untouched")
 
+title, why = jd.close_tab_prompt("api-server")
+r.check("api-server" in title and "ideabox" in why,
+        "the close question names the tab and says where the notes go")
+
 raise SystemExit(r.finish())

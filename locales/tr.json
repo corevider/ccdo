@@ -197,5 +197,8 @@
   "Move to the ideabox": "ideabox'a al",
   "Hand to a session…": "Bir oturuma aktar…",
   "Hand to %s": "%s oturumuna aktar",
-  "Enter: Add  •  Shift+Enter: Newline  •  Ctrl+V: Image": "Enter: Ekle  •  Shift+Enter: Satır  •  Ctrl+V: Görsel"
+  "Enter: Add  •  Shift+Enter: Newline  •  Ctrl+V: Image": "Enter: Ekle  •  Shift+Enter: Satır  •  Ctrl+V: Görsel",
+  "Close the tab of %s?": "%s sekmesi kapatılsın mı?",
+  "The session has ended. Its waiting notes go back to the ideabox, its sent ones to the history, and the tab goes away.": "Oturum sona ermiş. Bekleyen notları ideabox'a, gönderilenler geçmişe gider ve sekme kaybolur.",
+  "Close the tab": "Sekmeyi kapat"
 }

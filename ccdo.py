@@ -1726,6 +1726,13 @@ def back_to_inbox_prompt():
               "to any session again."))
 
 
+def close_tab_prompt(label):
+    """Title and explanation of the 'close this tab' confirmation."""
+    return (_("Close the tab of %s?") % label,
+            _("The session has ended. Its waiting notes go back to the ideabox, "
+              "its sent ones to the history, and the tab goes away."))
+
+
 def session_list(cfg, store):
     """Every session the window and the menu show.
 
@@ -4549,8 +4556,7 @@ def start_gui(use_statusicon=False):
                 # empty; emptying it is how the tab goes away.
                 items.append((_("Close this tab: waiting notes go to the ideabox, "
                                 "sent ones to history"),
-                              lambda: (store.close_target(k),
-                                       self.app.request_refresh())))
+                              lambda: self.app.close_tab(k)))
             items += [
                 (_("Decision log"), lambda: open_in_editor(EVENTS_PATH)),
                 (_("Queue file"), lambda: open_in_editor(QUEUE_MD)),
@@ -5599,7 +5605,19 @@ def start_gui(use_statusicon=False):
                                                 Gtk.IconSize.MENU)
             mark.set_valign(Gtk.Align.CENTER)
             mark.get_style_context().add_class("jd-tabicon")
-            tab.pack_start(mark, False, False, 0)
+            if s.get("live", True):
+                tab.pack_start(mark, False, False, 0)
+            else:
+                # On a closed session the mark is a cross, and a cross on a
+                # tab is a close button: clicking it must close the tab.
+                close = Gtk.EventBox()
+                close.set_visible_window(False)
+                close.set_tooltip_text(_("Close the tab"))
+                close.add(mark)
+                close.connect("button-press-event",
+                              lambda _w, ev, t=s["target"]:
+                              self.on_tab_close(ev, t))
+                tab.pack_start(close, False, False, 0)
             lbl = Gtk.Label(label=session_tab_text(s))
             lbl.set_tooltip_text(session_tooltip(s))
             tab.pack_start(lbl, False, False, 0)
@@ -5621,6 +5639,14 @@ def start_gui(use_statusicon=False):
             eb.add(self.make_tab_body(s))
             eb.show_all()
             return eb
+
+        def on_tab_close(self, ev, target):
+            """The cross on a closed session's tab; the press must not also
+            switch the notebook to that tab, so it is swallowed."""
+            if ev.button != 1:
+                return False
+            GLib.idle_add(self._once(self.close_tab, target))
+            return True
 
         def on_tab_scroll(self, _w, ev):
             names = {Gdk.ScrollDirection.UP: "up",
@@ -5738,20 +5764,34 @@ def start_gui(use_statusicon=False):
             return [s for s in self.sessions
                     if s.get("live") and s["target"] != INBOX]
 
-        def back_to_inbox(self, task_id):
-            """Ask first: the note leaves the queue the user is looking at."""
-            title, why = back_to_inbox_prompt()
+        def confirm(self, title, why, ok_label):
+            """A yes/no question in front of the window; True when agreed."""
             dlg = Gtk.MessageDialog(transient_for=self.parent_window(), modal=True,
                                     message_type=Gtk.MessageType.QUESTION,
                                     buttons=Gtk.ButtonsType.NONE, text=title)
             dlg.format_secondary_text(why)
             dlg.add_button(_("Cancel"), Gtk.ResponseType.CANCEL)
-            dlg.add_button(_("Move to the ideabox"), Gtk.ResponseType.OK)
+            dlg.add_button(ok_label, Gtk.ResponseType.OK)
             dlg.set_default_response(Gtk.ResponseType.OK)
             answer = dlg.run()
             dlg.destroy()
-            if answer == Gtk.ResponseType.OK:
+            return answer == Gtk.ResponseType.OK
+
+        def back_to_inbox(self, task_id):
+            """Ask first: the note leaves the queue the user is looking at."""
+            title, why = back_to_inbox_prompt()
+            if self.confirm(title, why, _("Move to the ideabox")):
                 store.update(task_id, target=None)
+                self.request_refresh()
+
+        def close_tab(self, target):
+            """Empty a closed session's queue, after asking; the tab then goes."""
+            sess = next((s for s in self.sessions if s["target"] == target), None)
+            if sess is None or sess.get("live"):
+                return
+            title, why = close_tab_prompt(sess["label"])
+            if self.confirm(title, why, _("Close the tab")):
+                store.close_target(target)
                 self.request_refresh()
 
         def send_next(self, target=None):
@@ -6058,11 +6098,22 @@ def start_gui(use_statusicon=False):
                 sub = Gtk.Menu()
                 header.set_submenu(sub)
                 self.menu.append(header)
-                if s.get("live") and s["target"] != INBOX:
+                target = s["target"]
+                if s.get("live") and target != INBOX:
                     item("➕  " + _("Note for this session…"),
-                         lambda tg=s["target"]: self.quick_note(tg), True, sub)
+                         lambda tg=target: self.quick_note(tg), True, sub)
                     item("▶  " + _("Send next task"),
-                         lambda tg=s["target"]: self.send_next(tg), bool(tasks), sub)
+                         lambda tg=target: self.send_next(tg), bool(tasks), sub)
+                    sub.append(Gtk.SeparatorMenuItem())
+                if target != INBOX and tasks:
+                    item("⇄  " + _("Move the waiting notes to the ideabox (%d)") % len(tasks),
+                         lambda tg=target: (store.move_to_inbox(tg),
+                                            self.request_refresh()), True, sub)
+                if target != INBOX and not s.get("live"):
+                    item("✕  " + _("Close this tab: waiting notes go to the ideabox, "
+                                   "sent ones to history"),
+                         lambda tg=target: self.close_tab(tg), True, sub)
+                if target != INBOX and (tasks or not s.get("live")):
                     sub.append(Gtk.SeparatorMenuItem())
                 tasks.sort(key=lambda t: -int(t.get("priority", 0)))
                 if not tasks:
@@ -6074,15 +6125,30 @@ def start_gui(use_statusicon=False):
                         head = "★ " + head
                     mi = Gtk.MenuItem.new_with_label(head)
                     act = Gtk.Menu()
-                    for lbl, fn in ((_("Send"), lambda i=t["id"]: self.send_task(i)),
-                                    (_("Done"), lambda i=t["id"]: (store.update(i, status="done"),
-                                                                      self.request_refresh())),
-                                    (_("Delete"), lambda i=t["id"]: (store.delete(i), self.request_refresh()))):
-                        a = Gtk.MenuItem.new_with_label(lbl)
-                        a.connect("activate", lambda _w, f=fn: f())
-                        act.append(a)
                     mi.set_submenu(act)
                     sub.append(mi)
+                    tid = t["id"]
+                    if target == INBOX:
+                        # As on the window: an inbox note is handed to a
+                        # session, edited or dropped — never sent from here.
+                        actions = [(_("Hand to %s") % live["label"],
+                                    lambda i=tid, tg=live["target"]:
+                                    (store.update(i, target=tg), self.request_refresh()))
+                                   for live in self.live_sessions()]
+                        actions += [(_("Edit (text, session, star)"),
+                                     lambda i=tid: self.edit_task(i)),
+                                    (_("Delete"),
+                                     lambda i=tid: (store.delete(i), self.request_refresh()))]
+                    else:
+                        actions = [(_("Send"), lambda i=tid: self.send_task(i)),
+                                   (_("Back to the ideabox"),
+                                    lambda i=tid: self.back_to_inbox(i)),
+                                   (_("Done"), lambda i=tid: (store.update(i, status="done"),
+                                                              self.request_refresh())),
+                                   (_("Delete"),
+                                    lambda i=tid: (store.delete(i), self.request_refresh()))]
+                    for lbl, fn in actions:
+                        item(lbl, fn, True, act)
 
             if shown == 0:
                 item("(%s)" % _("no live sessions"), None, False)
