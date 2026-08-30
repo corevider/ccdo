@@ -429,8 +429,11 @@ A live session's `⋮` menu (and its entry in the tray and menu bar menus) has
 **Rename in Claude Code…** and **Color in Claude Code**: ccdo types `/rename
 <name>` or `/color <name>` into the session's pane, and the tab follows a
 moment later, since the name and the color are read back out of the
-transcript. Only an idle session takes them — a busy one is mid-turn, and a
-waiting one holds a question the text would answer.
+transcript. A busy session takes them too — Claude Code queues what is typed
+and runs it when the turn ends — but not one on a permission prompt, where
+the keystrokes would answer the prompt. The `⋮` menu holds only what is about
+that session; settings, the queue file and the decision log are under the
+menu button in the title bar.
 
 ### The status line
 

@@ -19,8 +19,11 @@ r.check(jd.slash_color("mauve") == "", "an unknown color sends nothing")
 idle = {"target": "%9", "live": True, "state": "idle"}
 r.check(jd.can_take_command(idle), "an idle pane takes a command")
 r.check(jd.can_take_command(dict(idle, state="unknown")), "so does a scanned pane of unknown state")
-for state in ("busy", "waiting", "asking"):
-    r.check(not jd.can_take_command(dict(idle, state=state)), "not while %s" % state)
+r.check(jd.can_take_command(dict(idle, state="busy")),
+        "a busy pane too: Claude Code queues the text for the end of the turn")
+r.check(jd.can_take_command(dict(idle, state="asking")), "and one that ended with a question")
+r.check(not jd.can_take_command(dict(idle, state="waiting")),
+        "not on a permission prompt — the keystrokes would answer it")
 r.check(not jd.can_take_command(dict(idle, live=False)), "not a closed session")
 r.check(not jd.can_take_command(dict(idle, target="sid:abc")), "not a session with no pane")
 

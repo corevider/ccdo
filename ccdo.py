@@ -1826,11 +1826,12 @@ def slash_color(name):
 def can_take_command(sess):
     """May a slash command be typed into this session right now?
 
-    Only an idle tmux pane: busy means Claude is mid-turn, waiting or asking
-    means the prompt holds a question the text would answer.
+    A live tmux pane that is not on a permission prompt: while Claude is
+    mid-turn the typed text is queued and runs when the turn ends, but on a
+    permission prompt the keystrokes would answer the prompt.
     """
     return bool(sess.get("live", True) and is_tmux_target(sess.get("target"))
-                and (sess.get("state") or "unknown") in ("idle", "unknown"))
+                and sess.get("state") != "waiting")
 
 
 def send_claude_command(cfg, target, command):
@@ -4893,11 +4894,6 @@ def start_gui(use_statusicon=False):
                 items.append((_("Close this tab: waiting notes go to the ideabox, "
                                 "sent ones to history"),
                               lambda: self.app.close_tab(k)))
-            items += [
-                (_("Decision log"), lambda: open_in_editor(EVENTS_PATH)),
-                (_("Queue file"), lambda: open_in_editor(QUEUE_MD)),
-                (_("Settings…"), self.app.open_settings),
-            ]
             for label, cb in items:
                 mi = Gtk.MenuItem.new_with_label(label)
                 mi.connect("activate",
@@ -4916,7 +4912,8 @@ def start_gui(use_statusicon=False):
             out of the transcript. Only an idle session takes them.
             """
             ok = can_take_command(self.sess)
-            why = "" if ok else _("Wait until the session is idle.")
+            why = ("" if ok else
+                   _("A permission prompt is open; answer it first."))
             menu.append(Gtk.SeparatorMenuItem())
             mi = Gtk.MenuItem.new_with_label(_("Rename in Claude Code…"))
             mi.set_sensitive(ok)
@@ -5685,6 +5682,15 @@ def start_gui(use_statusicon=False):
             head.set_show_close_button(True)
             head.set_title("ccdo")
             head.set_has_subtitle(False)
+            # What is not about one session lives up here, not in a tab's
+            # ⋮ menu — the same settings under every tab read as per-session.
+            gear = Gtk.MenuButton()
+            gear.set_image(Gtk.Image.new_from_icon_name("open-menu-symbolic",
+                                                        Gtk.IconSize.BUTTON))
+            gear.set_relief(Gtk.ReliefStyle.NONE)
+            gear.set_tooltip_text(_("ccdo menu"))
+            gear.set_popup(self.build_app_menu())
+            head.pack_end(gear)
             self.set_titlebar(head)
             self.connect("delete-event", self.on_delete)
             self.connect("key-press-event", self.on_key)
@@ -5693,6 +5699,19 @@ def start_gui(use_statusicon=False):
             self.nb.get_style_context().add_class("jd-body")
             self.add(self.nb)
             self.pin = None
+
+        def build_app_menu(self):
+            menu = Gtk.Menu()
+            for label, cb in (
+                    (_("Settings…"), lambda: self.app.open_settings()),
+                    (_("Queue file"), lambda: open_in_editor(QUEUE_MD)),
+                    (_("Decision log"), lambda: open_in_editor(EVENTS_PATH)),
+                    (_("Scan sessions"), lambda: self.app.discover(True))):
+                mi = Gtk.MenuItem.new_with_label(label)
+                mi.connect("activate", lambda _w, f=cb: GLib.idle_add(self.app._once(f)))
+                menu.append(mi)
+            menu.show_all()
+            return menu
 
         def pin_tab(self, tab, css_class, on_click, on_scroll):
             """Park a tab at the left edge of the strip, outside the part
