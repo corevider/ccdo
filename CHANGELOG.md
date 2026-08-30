@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.39] - 2026-08-30
+
+### Fixed
+
+- **gui:** the cross on a closed tab closes it; the tray menu matches the window (3180edb)
 ## [1.0.38] - 2026-08-30
 
 ### Added
