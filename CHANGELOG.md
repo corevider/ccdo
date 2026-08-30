@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.48] - 2026-08-30
+
+### Added
+
+- **gui:** a button that shows the session's terminal (5a6b070)
 ## [1.0.47] - 2026-08-30
 
 ### Fixed
