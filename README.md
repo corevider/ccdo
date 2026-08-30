@@ -439,12 +439,24 @@ menu button in the title bar.
 
 The terminal button beside `⋮` on a session's page (and **Open the session's
 terminal** in the tray and menu bar menus) shows the session where it runs.
-On X11 the window already attached to it comes to the front (`xdotool`); on
-Wayland, where no program may raise another's window, a new terminal window
-attaches to the tmux session instead. `terminal_command` in the settings
-picks the terminal: `auto` tries ptyxis, kitty, alacritty, gnome-terminal and
-x-terminal-emulator in turn, or give a command with `{cmd}` standing for what
-to run, e.g. `kitty -e sh -c {cmd}`. On macOS Terminal.app is used.
+The pane is selected in tmux, then the first of these that works:
+
+1. **X11** — the window already attached to the session comes to the front
+   (`xdotool`).
+2. **Wayland with the [Window Calls](https://extensions.gnome.org/extension/4724/window-calls/)
+   extension** — GNOME Shell lists its windows and raises the terminal window
+   whose title names the session (ccdo switches tmux titles on for that
+   session so there is a title to match). One session per terminal window is
+   what makes this exact; tabs in one window cannot be told apart.
+3. **Wayland without it** — no program may raise another's window on its
+   own, but the click in ccdo yields an activation token, so the terminal
+   comes up; its most recently used tmux tab then switches to the session.
+   `terminal_switch_client: false` turns this off.
+4. Otherwise a new terminal window attaches to the tmux session.
+   `terminal_command` picks the terminal: `auto` tries ptyxis, kitty,
+   alacritty, gnome-terminal and x-terminal-emulator in turn, or give a
+   command with `{cmd}` standing for what to run, e.g. `kitty -e sh -c {cmd}`.
+   On macOS Terminal.app is used.
 
 ### The status line
 
@@ -899,6 +911,7 @@ at the bottom opens it. Keys you added by hand are preserved when saving.
 | `skip_advance_on_question` | `true` | hold back when Claude ended with a question |
 | `question_patterns` | `[]` | extra question patterns (regex) |
 | `check_updates` | `true` | look for a newer release at startup and every hour |
+| `terminal_switch_client` | `true` | Wayland: bring the terminal up and switch its last-used tmux tab to the session |
 | `terminal_command` | `"auto"` | terminal for the "open terminal" button; `auto` picks one installed, or a command with `{cmd}` |
 | `statusline_chips` | `true` | keep the status line's facts and show them under a session's title |
 | `statusline_own_line` | `true` | draw a plain status line in the terminal when there is no other one |

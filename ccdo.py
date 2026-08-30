@@ -112,6 +112,7 @@ DEFAULT_CONFIG = {
     "use_claude_session_name": True, # take the tab name from Claude Code
     "use_claude_theme_color": True,  # take the color from the Claude Code theme
     "terminal_command": "auto",      # how "open terminal" starts one; {cmd} = what to run
+    "terminal_switch_client": True,  # Wayland: show the session in the tab used last
     "use_claude_agent_color": True,  # take the color from /color
     "window_keep_above": True,       # keep the window on top
     "window_utility_hint": False,    # UTILITY hint (troublesome on some WMs)
@@ -971,6 +972,10 @@ SETTINGS_SCHEMA = (
          "If you ran /color in the session, the tab uses that color."),
         ("use_claude_theme_color", "bool", "Take the color from the Claude Code theme",
          "The theme's claude accent, for sessions on a custom theme."),
+        ("terminal_switch_client", "bool", "Show a session in the terminal tab used last",
+         "On Wayland no program may raise another's window; with this on, the "
+         "terminal comes up and its most recently used tmux tab switches to the "
+         "session. Off: a new terminal attaches instead."),
         ("terminal_command", "str", "Terminal for the 'open terminal' button",
          "auto picks ptyxis, kitty, alacritty, gnome-terminal or "
          "x-terminal-emulator. Or a command with {cmd}, e.g. kitty -e sh -c {cmd}"),
@@ -1927,9 +1932,173 @@ def raise_terminal_window(session):
     return False
 
 
-def open_session_terminal(cfg, target):
-    """Show the session's terminal: the pane is selected, and either the
-    window that already shows it comes up or a new terminal attaches."""
+TERMINAL_APP_IDS = {
+    "ptyxis": "org.gnome.Ptyxis",
+    "ptyxis-agent": "org.gnome.Ptyxis",
+    "gnome-terminal-server": "org.gnome.Terminal",
+    "gnome-terminal": "org.gnome.Terminal",
+    "kgx": "org.gnome.Console",
+    "kitty": "kitty",
+    "alacritty": "Alacritty",
+    "wezterm-gui": "org.wezfurlong.wezterm",
+    "foot": "foot",
+}
+
+
+def title_names_session(title, session):
+    """Does a terminal window title (tmux's, '#S:#I:#W - ...') name the session?"""
+    title = (title or "").strip()
+    return bool(session) and (title == session or title.startswith(session + ":")
+                              or title.startswith(session + " "))
+
+
+def tmux_clients(session=None):
+    """Attached clients as dicts, most recently used first."""
+    args = ["tmux", "list-clients", "-F",
+            "#{client_tty}\t#{client_activity}\t#{session_name}\t#{client_pid}"]
+    if session:
+        args += ["-t", session]
+    rc, out, __ = run_cmd(args)
+    if rc != 0:
+        return []
+    found = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        try:
+            activity = int(parts[1])
+        except ValueError:
+            activity = 0
+        found.append({"tty": parts[0], "activity": activity,
+                      "session": parts[2], "pid": parts[3]})
+    return sorted(found, key=lambda c: -c["activity"])
+
+
+def process_ancestry(pid, depth=5):
+    """The command names of `pid` and its parents, nearest first."""
+    names = []
+    for _ in range(depth):
+        rc, out, __ = run_cmd(["ps", "-o", "ppid=,comm=", "-p", str(pid)])
+        if rc != 0 or not out.strip():
+            break
+        parent, __, name = out.strip().partition(" ")
+        names.append(name.strip())
+        pid = parent.strip()
+        if not pid or pid == "1":
+            break
+    return names
+
+
+def terminal_app_id(client_pid):
+    """The desktop id of the terminal a tmux client runs in, or ''."""
+    for name in process_ancestry(client_pid):
+        if name in TERMINAL_APP_IDS:
+            return TERMINAL_APP_IDS[name]
+    return ""
+
+
+def shell_windows_proxy():
+    """GNOME Shell's Windows interface, present only with the Window Calls
+    extension; None where it is missing."""
+    try:
+        from gi.repository import Gio
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SESSION, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+            "org.gnome.Shell", "/org/gnome/Shell/Extensions/Windows",
+            "org.gnome.Shell.Extensions.Windows", None)
+        # The Shell name always has an owner; only a call proves the
+        # extension is there.
+        proxy.call_sync("List", None, 0, 1500, None)
+        return proxy
+    except Exception:
+        return None
+
+
+def focus_terminal_via_shell(session):
+    """With the Window Calls extension, raise the terminal window whose title
+    names the session. tmux titles are switched on for the session so the
+    window has one to match."""
+    proxy = shell_windows_proxy()
+    if proxy is None:
+        return False
+    run_cmd(["tmux", "set-option", "-t", session, "set-titles", "on"])
+    try:
+        from gi.repository import GLib
+        raw = proxy.call_sync("List", None, 0, 2000, None).unpack()[0]
+        for win in json.loads(raw):
+            wid = win.get("id")
+            if wid is None:
+                continue
+            title = proxy.call_sync("GetTitle", GLib.Variant("(u)", (int(wid),)),
+                                    0, 2000, None).unpack()[0]
+            if title_names_session(title, session):
+                proxy.call_sync("Activate", GLib.Variant("(u)", (int(wid),)),
+                                0, 2000, None)
+                return True
+    except Exception as e:
+        if DEBUG:
+            sys.stderr.write("[ccdo] window calls: %s\n" % e)
+    return False
+
+
+def activate_terminal_app(app_id, token):
+    """Bring a terminal application up through D-Bus activation.
+
+    The token comes from the window the user just clicked in: without one
+    the compositor only marks the terminal as wanting attention.
+    """
+    if not app_id or not token:
+        return False
+    try:
+        from gi.repository import Gio, GLib
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SESSION, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+            app_id, "/" + app_id.replace(".", "/"),
+            "org.freedesktop.Application", None)
+        if not proxy.get_name_owner():
+            return False
+        data = {"activation-token": GLib.Variant("s", token),
+                "desktop-startup-id": GLib.Variant("s", token)}
+        proxy.call_sync("Activate", GLib.Variant("(a{sv})", (data,)), 0, 2000, None)
+        return True
+    except Exception as e:
+        if DEBUG:
+            sys.stderr.write("[ccdo] activate %s: %s\n" % (app_id, e))
+        return False
+
+
+def show_in_recent_client(cfg, session, token):
+    """Wayland without an extension: bring the terminal up and switch its
+    most recently used tmux tab to the session (unless that tab already
+    shows it)."""
+    if not cfg.get("terminal_switch_client", True):
+        return False
+    clients = tmux_clients()
+    if not clients:
+        return False
+    newest = clients[0]
+    if IS_MAC:
+        rc, __, __ = run_cmd(["osascript", "-e", 'tell application "Terminal" to activate'])
+        raised = rc == 0
+    else:
+        raised = activate_terminal_app(terminal_app_id(newest["pid"]), token)
+    if not raised:
+        return False
+    if newest["session"] != session:
+        run_cmd(["tmux", "switch-client", "-c", newest["tty"], "-t", session])
+    return True
+
+
+def open_session_terminal(cfg, target, token=""):
+    """Show the session's terminal.
+
+    In order: the window already attached comes up (X11 through xdotool,
+    Wayland through the Window Calls extension), or the terminal comes up
+    and its last-used tab switches to the session, or a new terminal
+    attaches. The pane is selected first so whatever shows it shows the
+    right one.
+    """
     if not is_tmux_target(target):
         return False, _("no tmux session for %s") % target
     session = tmux_session_of(target)
@@ -1938,6 +2107,10 @@ def open_session_terminal(cfg, target):
     run_cmd(["tmux", "select-window", "-t", target])
     run_cmd(["tmux", "select-pane", "-t", target])
     if raise_terminal_window(session):
+        return True, session
+    if focus_terminal_via_shell(session):
+        return True, session
+    if show_in_recent_client(cfg, session, token):
         return True, session
     argv = terminal_argv(cfg, "tmux attach -t %s" % shlex.quote(session))
     if not argv:
@@ -4303,7 +4476,7 @@ def start_gui(use_statusicon=False):
     try:
         import gi
         gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk, Gdk, GLib, Pango
+        from gi.repository import Gtk, Gdk, GLib, Gio, Pango
     except (ImportError, ValueError) as e:
         # The tray needs GTK and a Linux desktop. Everything else — the queue,
         # the hooks, delivery over tmux — runs without it, so say what is
@@ -6323,8 +6496,23 @@ def start_gui(use_statusicon=False):
                 store.update(task_id, target=None)
                 self.request_refresh()
 
+        def activation_token(self):
+            """A token the compositor accepts as 'the user asked for this'.
+
+            On Wayland a program may only raise another's window with one,
+            and GTK hands it out for the click that just happened here.
+            """
+            try:
+                ctx = Gdk.Display.get_default().get_app_launch_context()
+                ctx.set_timestamp(Gtk.get_current_event_time())
+                info = Gio.AppInfo.create_from_commandline(
+                    "true", None, Gio.AppInfoCreateFlags.NONE)
+                return ctx.get_startup_notify_id(info, []) or ""
+            except Exception:
+                return ""
+
         def show_terminal(self, target):
-            ok, msg = open_session_terminal(cfg, target)
+            ok, msg = open_session_terminal(cfg, target, self.activation_token())
             if not ok:
                 notify("ccdo", msg, cfg)
 
