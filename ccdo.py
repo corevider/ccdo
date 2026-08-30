@@ -103,6 +103,8 @@ DEFAULT_CONFIG = {
     "skip_advance_on_question": True,  # hold back if Claude ended with a question
     "question_patterns": [],         # extra question patterns (regex)
     "check_updates": True,           # look for a newer release every hour
+    "statusline_chips": True,        # keep the status line's facts for the window
+    "statusline_own_line": True,     # draw a plain status line when there is no other
     "screenshot_paste_seconds": 120,  # paste a just-taken screenshot file; 0 = off
     "screenshot_dir": "",            # where those land; empty = ask the desktop
     "language": "auto",              # auto = the desktop language; en, tr, ...
@@ -967,6 +969,12 @@ SETTINGS_SCHEMA = (
          "If you ran /color in the session, the tab uses that color."),
         ("use_claude_theme_color", "bool", "Take the color from the Claude Code theme",
          "The theme's claude accent, for sessions on a custom theme."),
+        ("statusline_chips", "bool", "Show the status line's facts under the title",
+         "Model, context, cost, limits and branch, as Claude Code reports them "
+         "to its status line."),
+        ("statusline_own_line", "bool", "Draw a plain status line when there is no other",
+         "Only matters without a status line of your own; with one, ccdo passes "
+         "it through untouched."),
     )),
     ("Window and notifications", (
         ("window_keep_above", "bool", "Keep the window on top", ""),
@@ -3131,12 +3139,13 @@ def hook_config(exe):
     }
 
 
-def run_statusline(rest):
+def run_statusline(rest, cfg=None):
     """Claude Code's statusline command: keep the summary, pass the JSON on.
 
     Whatever goes wrong here must not cost the user their status line, so
     every step short of printing is wrapped.
     """
+    cfg = cfg or {}
     raw = sys.stdin.read()
     try:
         data = json.loads(raw or "{}")
@@ -3147,7 +3156,7 @@ def run_statusline(rest):
     sid = data.get("session_id")
     try:
         reg = Registry()
-        if sid and reg.get(sid) is not None:
+        if sid and cfg.get("statusline_chips", True) and reg.get(sid) is not None:
             cwd = ((data.get("workspace") or {}).get("current_dir")
                    or data.get("cwd") or "")
             reg.upsert(sid, status=statusline_summary(data, git_branch(cwd)))
@@ -3164,7 +3173,8 @@ def run_statusline(rest):
         except Exception as e:
             sys.stdout.write("ccdo: status line failed: %s" % e)
         return 0
-    sys.stdout.write(" | ".join(status_chips(statusline_summary(data))))
+    if cfg.get("statusline_own_line", True):
+        sys.stdout.write(" | ".join(status_chips(statusline_summary(data))))
     return 0
 
 
@@ -4898,12 +4908,14 @@ def start_gui(use_statusicon=False):
         def build_status_row(self, sess):
             """Redraw the status chips when the status line has news."""
             status = sess.get("status") or {}
-            if status.get("at") == self._status_at:
+            wanted = bool(cfg.get("statusline_chips", True))
+            key = (status.get("at"), wanted)
+            if key == self._status_at:
                 return
-            self._status_at = status.get("at")
+            self._status_at = key
             for ch in self.status_row.get_children():
                 self.status_row.remove(ch)
-            chips = status_chips(status)
+            chips = status_chips(status) if wanted else []
             for texts in chip_rows(chips):
                 row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
                 for text in texts:
@@ -6617,7 +6629,7 @@ def main(argv):
         return install_hooks(dry_run="--dry-run" in rest)
 
     if cmd == "statusline":
-        return run_statusline(rest)
+        return run_statusline(rest, cfg)
 
     if cmd == "sessions":
         ss = discover_sessions(cfg)

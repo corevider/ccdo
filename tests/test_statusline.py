@@ -111,6 +111,24 @@ finally:
 r.check(own.startswith("Fable 5 · high | ctx"), "without a command ccdo draws a line itself", own)
 r.check(reg.get("nobody") is None, "an unknown session gets no registry record")
 
+# Both halves can be switched off in the settings, at run time.
+sys.stdin, sys.stdout = io.StringIO(json.dumps(dict(SAMPLE, session_id="nobody"))), io.StringIO()
+try:
+    jd.run_statusline([], {"statusline_own_line": False})
+    quiet = sys.stdout.getvalue()
+finally:
+    sys.stdin, sys.stdout = real_in, real_out
+r.check(quiet == "", "with the own line off, ccdo prints nothing", repr(quiet))
+reg.upsert("sl-test", status=None)
+sys.stdin, sys.stdout = io.StringIO(json.dumps(SAMPLE)), io.StringIO()
+try:
+    jd.run_statusline(["--", "cat"], {"statusline_chips": False})
+finally:
+    sys.stdin, sys.stdout = real_in, real_out
+r.check(not reg.get("sl-test").get("status"), "with the chips off, nothing is kept")
+r.check("statusline_chips" in jd.DEFAULT_CONFIG and "statusline_own_line" in jd.DEFAULT_CONFIG,
+        "both settings have defaults")
+
 sys.stdin, sys.stdout = io.StringIO("not json"), io.StringIO()
 try:
     rc = jd.run_statusline(["--", "cat"])

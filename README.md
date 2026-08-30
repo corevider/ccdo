@@ -430,7 +430,9 @@ If the `SOURCE` column in `ccdo sessions` says `hook` the match is exact;
 pipes one JSON document to that command on every update; ccdo keeps the few
 numbers worth showing on the session's record and hands the same JSON on to
 the previous command, so the terminal keeps the line it had. If there was no
-status line, ccdo draws a plain one itself.
+status line, ccdo draws a plain one itself — `statusline_own_line: false` in the
+settings keeps the terminal bare, and `statusline_chips: false` stops the window
+from showing the facts; both take effect at once, no reinstall.
 
 The window then shows a row of chips under a session's title — model and
 effort, context (`ctx 125.1k · 62%`), cost so far, the five-hour and weekly
@@ -874,6 +876,8 @@ at the bottom opens it. Keys you added by hand are preserved when saving.
 | `skip_advance_on_question` | `true` | hold back when Claude ended with a question |
 | `question_patterns` | `[]` | extra question patterns (regex) |
 | `check_updates` | `true` | look for a newer release at startup and every hour |
+| `statusline_chips` | `true` | keep the status line's facts and show them under a session's title |
+| `statusline_own_line` | `true` | draw a plain status line in the terminal when there is no other one |
 | `language` | `"auto"` | `auto` follows the desktop, or a code such as `en`, `tr` |
 | `delivery` | `"auto"` | route for untargeted notes: `auto` / `tmux` / `xdotool` / `file` |
 | `file_ref_template` | `"Read {path} and do the task in it."` | the line sent when a note goes to a file |
