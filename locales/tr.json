@@ -191,5 +191,6 @@
   "Session names: ccdo sessions. With exactly one live session, ▶ sends an inbox note straight to it.": "Oturum adları: ccdo sessions. Tek bir canlı oturum varken ▶ ideabox notunu doğrudan ona gönderir.",
   "Move the waiting notes to the ideabox (%d)": "Bekleyen notları ideabox'a taşı (%d)",
   "Close this tab: waiting notes go to the ideabox, sent ones to history": "Bu sekmeyi kapat: bekleyen notlar ideabox'a, gönderilenler geçmişe",
-  "Back to the ideabox": "ideabox'a geri al"
+  "Back to the ideabox": "ideabox'a geri al",
+  "Close this session: waiting notes go to the ideabox, sent ones to history": "Bu oturumu kapat: bekleyen notlar ideabox'a, gönderilenler geçmişe"
 }

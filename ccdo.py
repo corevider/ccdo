@@ -1719,6 +1719,21 @@ def with_inbox(sessions):
     return [inbox_session()] + [s for s in sessions if s["target"] != INBOX]
 
 
+def session_list(cfg, store):
+    """Every session the window and the menu show.
+
+    The live ones first, then those that have closed but still hold notes
+    (their queue is what keeps them around), the inbox in front of all.
+    """
+    live = discover_sessions(cfg)
+    live_targets = {s["target"] for s in live}
+    sessions = list(live)
+    for t in store.active_targets():
+        if t not in live_targets:
+            sessions.append(ghost_session(cfg, t))
+    return with_inbox(sessions)
+
+
 def next_page_index(current, count, delta):
     """Step through `count` session tabs, wrapping at the ends.
 
@@ -3664,13 +3679,26 @@ def start_mac_gui():
                 head.setSubmenu_(sub)
                 head.setEnabled_(True)
 
-                if sess.get("live") and sess["target"] != INBOX:
-                    target = sess["target"]
+                target = sess["target"]
+                if sess.get("live") and target != INBOX:
                     self.add(sub, _("Note for this session…"),
                              lambda t=target, name=sess["label"]:
                              note_window(t, name))
                     self.add(sub, _("Send next task"),
                              lambda t=target: self.send_next(t), bool(tasks))
+                    self.separator(sub)
+                if target != INBOX and tasks:
+                    self.add(sub, _("Move the waiting notes to the ideabox (%d)") % len(tasks),
+                             lambda t=target: (store.move_to_inbox(t),
+                                               self.refresh(force=True)))
+                if target != INBOX and not sess.get("live"):
+                    # A closed session stays listed while its queue holds
+                    # notes; emptying it is how the entry goes away.
+                    self.add(sub, _("Close this session: waiting notes go to the "
+                                    "ideabox, sent ones to history"),
+                             lambda t=target: (store.close_target(t),
+                                               self.refresh(force=True)))
+                if target != INBOX and (tasks or not sess.get("live")):
                     self.separator(sub)
                 if not tasks:
                     self.add(sub, "(%s)" % _("empty"), None)
@@ -3685,6 +3713,10 @@ def start_mac_gui():
                     row.setEnabled_(True)
                     tid = task["id"]
                     self.add(acts, _("Send"), lambda i=tid: self.send_task(i))
+                    if target != INBOX:
+                        self.add(acts, _("Back to the ideabox"),
+                                 lambda i=tid: (store.update(i, target=None),
+                                                self.refresh(force=True)))
                     self.add(acts, _("Done"), lambda i=tid: self.mark_done(i))
                     self.add(acts, _("Delete"), lambda i=tid: self.delete(i))
 
@@ -3766,7 +3798,7 @@ def start_mac_gui():
             threading.Thread(target=work, daemon=True).start()
 
         def refresh(self, force=False):
-            self.sessions = discover_sessions(cfg)
+            self.sessions = session_list(cfg, store)
             signature = tuple(
                 (s["label"], s["target"], bool(s.get("live")),
                  tuple(t["id"] for t in store.pending(s["target"])))
@@ -5320,13 +5352,7 @@ def start_gui(use_statusicon=False):
                     sys.stderr.write("[ccdo] scan deferred (rate limit)\n")
                 return None
             self._last_discover = now
-            live = discover_sessions(cfg)
-            live_targets = {s["target"] for s in live}
-            sessions = list(live)
-            for t in store.active_targets():
-                if t not in live_targets:
-                    sessions.append(ghost_session(cfg, t))
-            sessions = with_inbox(sessions)
+            sessions = session_list(cfg, store)
             self.sessions = sessions
             rebuild_accent_css(sessions)
 

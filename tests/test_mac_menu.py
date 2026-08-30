@@ -435,8 +435,12 @@ r.check(any("Retry the upload" in t for t in sub), "and lists the tasks", str(su
 r.check(any(t.startswith("★") for t in sub), "a starred task is marked", str(sub))
 
 task_row = next(i for i in session_item.submenu.items if "Retry the upload" in i.title)
-r.check(sorted(task_row.submenu.titles()) == ["Delete", "Done", "Send"],
-        "each task carries its three actions", str(task_row.submenu.titles()))
+r.check(sorted(task_row.submenu.titles()) == ["Back to the ideabox", "Delete", "Done", "Send"],
+        "each task carries its four actions", str(task_row.submenu.titles()))
+r.check(any(t.startswith("Move the waiting notes to the ideabox (2)") for t in sub),
+        "the session can hand all its waiting notes back", str(sub))
+r.check(not any(t.startswith("Close this session") for t in sub),
+        "a live session has no close action")
 
 r.check(state["status"].button().tooltip and "2" in state["status"].button().tooltip,
         "the tooltip carries the count, since the icon has no badge",
@@ -467,6 +471,33 @@ r.check(len({i.tag() for i in tagged}) == len(tagged),
 done = next(i for i in walk(state["status"].menu) if i.title == "Done")
 jd._MAC_ACTIONS[done.tag()]()
 r.check(len(store.pending("%9")) == 1, "Done really takes the task out of the queue")
+
+back = next(i for i in walk(state["status"].menu) if i.title == "Back to the ideabox")
+jd._MAC_ACTIONS[back.tag()]()
+r.check(not store.pending("%9") and len(store.pending(None)) >= 1,
+        "Back to the ideabox moves the note out of the session")
+
+# A session that has closed but still holds notes is listed as closed, and
+# can be emptied from its own submenu; then it is gone.
+stuck = store.add("left behind", target="gone:1")
+sent = store.add("was handed over", target="gone:1")
+store.update(sent["id"], status="sent", sent_at=jd.now_iso())
+app_menu = state["status"].menu
+jd._MAC_ACTIONS[next(i for i in walk(app_menu) if i.title == "Scan sessions").tag()]()
+closed = next((i for i in app_menu.items if i.title.startswith("gone")), None)
+r.check(closed is not None and "(closed)" in closed.title,
+        "a closed session with notes is listed as closed", str(app_menu.titles()))
+close_item = next((i for i in closed.submenu.items
+                   if i.title.startswith("Close this session")), None) if closed else None
+r.check(close_item is not None, "and offers to close it", str(closed.submenu.titles() if closed else ""))
+if close_item is not None:
+    jd._MAC_ACTIONS[close_item.tag()]()
+    r.check(not any(i.title.startswith("gone") for i in app_menu.items),
+            "closing it takes the entry away", str(app_menu.titles()))
+    r.check(any(t["id"] == stuck["id"] and not t.get("target") for t in store.all()),
+            "its waiting note is in the inbox")
+    r.check(all(t["id"] != sent["id"] for t in store.all()),
+            "its sent note went to history")
 
 
 # ------------------------------------------------------------- note window
