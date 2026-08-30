@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.45] - 2026-08-30
+
+### Fixed
+
+- **gui:** a directory or name that arrives later reaches the page (a2586ad)
 ## [1.0.44] - 2026-08-30
 
 ### Added
