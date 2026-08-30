@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.44] - 2026-08-30
+
+### Added
+
+- **gui:** rename and color a session through Claude Code; every tab shows its path (c85fdc6)
 ## [1.0.43] - 2026-08-30
 
 ### Added
