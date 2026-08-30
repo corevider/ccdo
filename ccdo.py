@@ -1080,6 +1080,14 @@ class Registry:
                 return rec
         return None
 
+    def mark_working(self, target, task_id):
+        """Note on every live record for `target` which task it is on now."""
+        if not target or target == INBOX:
+            return
+        for sid, rec in self.all().items():
+            if rec.get("target") == target and rec.get("state") != "ended":
+                self.upsert(sid, current_task=task_id)
+
 
 class AutoPrefs:
     """The 'auto' preference, kept per working directory.
@@ -1533,6 +1541,7 @@ def registry_sessions(cfg):
             "state": rec.get("state", "idle"),
             "session_id": rec.get("session_id"),
             "auto_advance": rec.get("auto_advance"),
+            "current_task": rec.get("current_task"),
             "source": "hook",
         })
     out.sort(key=lambda s: s["target"])
@@ -1864,14 +1873,6 @@ TASK_STATES = {
 }
 
 
-def latest_sent_id(tasks):
-    """The task handed over most recently: the one a busy session is on."""
-    sent = [t for t in tasks if t.get("status") == "sent"]
-    if not sent:
-        return None
-    return max(sent, key=lambda t: t.get("sent_at") or "")["id"]
-
-
 def sent_stamp(sent_at, now=None):
     """When a task went out: '14:32' today, '29 Aug 14:32' on an earlier day.
 
@@ -1889,12 +1890,13 @@ def sent_stamp(sent_at, now=None):
     return when.strftime("%d %b %H:%M")
 
 
-def task_state(task, sess=None, latest_sent=None):
+def task_state(task, sess=None):
     """Which stage a task is at.
 
-    A sent task counts as 'working' only while its session is busy and it is
-    the latest one handed over; older sent tasks stay 'sent', since Claude
-    Code reads one note at a time.
+    A sent task is 'working' only while its session says so: the hooks
+    record which note the session is on (current_task) and clear it when
+    that turn ends. A busy session on its own proves nothing — the user may
+    simply be typing to it.
     """
     status = task.get("status")
     if status == "done":
@@ -1902,7 +1904,7 @@ def task_state(task, sess=None, latest_sent=None):
     if status != "sent":
         return "queued"
     if (sess and sess.get("live", True) and sess.get("state") == "busy"
-            and (latest_sent is None or latest_sent == task.get("id"))):
+            and sess.get("current_task") == task.get("id")):
         return "working"
     return "sent"
 
@@ -2138,7 +2140,9 @@ def history_for_target(key, limit=None):
     out = [rec for rec in read_history()
            if ((key == INBOX and not (rec["task"].get("target")))
                or rec["task"].get("target") == key)]
-    out.reverse()
+    # By time rather than file order: closing a session archives old notes
+    # long after they went out, and they carry their own stamp.
+    out.sort(key=lambda rec: rec.get("ts") or "", reverse=True)
     return out[:limit] if limit else out
 
 
@@ -2565,6 +2569,7 @@ def _deliver(cfg, store, task, force=False):
         if ok:
             store.update(task["id"], status="sent", sent_at=now_iso(),
                          drop_path=drop_path, delivered_via="tmux")
+            Registry().mark_working(target, task["id"])
         return ok, msg
 
     # A note with no target (inbox): tmux if there is exactly one candidate,
@@ -2586,6 +2591,8 @@ def _deliver(cfg, store, task, force=False):
         if ok:
             store.update(task["id"], status="sent", sent_at=now_iso(),
                          drop_path=drop_path, delivered_via=m)
+            if m == "tmux":
+                Registry().mark_working(sessions[0]["target"], task["id"])
             return True, msg
         last = msg
     return False, last or _("could not deliver")
@@ -2823,6 +2830,19 @@ def turn_ends_with_question(text, cfg=None):
     return False, ""
 
 
+def finish_task(store, task_id, via):
+    """Archive a handed-over note as done; False if it is no longer 'sent'.
+
+    The user may have sent it back to the ideabox or deleted it in the
+    meantime, and a note that is waiting again must not be finished.
+    """
+    task = next((t for t in store.all() if t["id"] == task_id), None)
+    if not task or task.get("status") != "sent":
+        return False
+    store.update(task_id, status="done", finished_via=via)
+    return True
+
+
 def hook_stop(cfg, store, reg, data):
     """The turn ended. Mark the session idle; with auto on, hand over the next."""
     sid = data.get("session_id")
@@ -2839,6 +2859,13 @@ def hook_stop(cfg, store, reg, data):
 
     reg.upsert(sid, state="asking" if asked else "idle", target=target,
                transcript=tpath)
+    # The note this turn was about is finished with the turn — unless the
+    # turn ended in a question, in which case the note is still open and
+    # the user's answer continues it.
+    current = rec.get("current_task")
+    if current and not asked:
+        finish_task(store, current, "stop_hook")
+        reg.upsert(sid, current_task=None)
     ipc_send("refresh")
 
     # With nothing pending there is no decision to explain, so we check that
@@ -2883,7 +2910,7 @@ def hook_stop(cfg, store, reg, data):
     payload, drop_path = prepare_payload(cfg, task)
     store.update(task["id"], status="sent", sent_at=now_iso(), push=False,
                  drop_path=drop_path, delivered_via="stop_hook")
-    reg.upsert(sid, advance_count=used + 1, state="busy")
+    reg.upsert(sid, advance_count=used + 1, state="busy", current_task=task["id"])
     log_event("advance", target=target, task=task, used=used + 1, cap=cap)
     ipc_send("refresh")
     notify("ccdo: " + _("next task handed over"), task["text"].splitlines()[0][:80], cfg)
@@ -4735,7 +4762,12 @@ def start_gui(use_statusicon=False):
             tasks = [t for t in store.all()
                      if t.get("status") != "done"
                      and ((k == INBOX and not t.get("target")) or t.get("target") == k)]
-            tasks.sort(key=lambda t: (t.get("status") == "sent", -int(t.get("priority", 0))))
+            # Waiting notes first in queue order; sent ones after, newest first.
+            waiting = [t for t in tasks if t.get("status") != "sent"]
+            waiting.sort(key=lambda t: -int(t.get("priority", 0)))
+            sent = sorted((t for t in tasks if t.get("status") == "sent"),
+                          key=lambda t: t.get("sent_at") or "", reverse=True)
+            tasks = waiting + sent
             for ch in self.listbox.get_children():
                 self.listbox.remove(ch)
             if not tasks:
@@ -4748,11 +4780,10 @@ def start_gui(use_statusicon=False):
                 row.add(lab)
                 self.listbox.add(row)
             pending_ids = [t["id"] for t in tasks if t.get("status") == "pending"]
-            latest = latest_sent_id(tasks)
             for t in tasks:
                 n = (pending_ids.index(t["id"]) + 1
                      if t["id"] in pending_ids else None)
-                state = task_state(t, self.sess, latest)
+                state = task_state(t, self.sess)
                 self.listbox.add(self.make_row(t, n, len(pending_ids), state))
             has_pending = any(t.get("status") == "pending" for t in tasks)
             st = self.sess.get("state")
@@ -6263,6 +6294,7 @@ def main(argv):
         print(t["text"])
         if cmd == "next":
             store.update(t["id"], status="sent", sent_at=now_iso(), push=False)
+            Registry().mark_working(target, t["id"])
             ipc_send("refresh")
             sys.stderr.write("[ccdo] %s delivered\n" % t["id"])
         return 0

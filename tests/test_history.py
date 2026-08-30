@@ -120,4 +120,13 @@ snap = jd.read_history()
 snap.clear()
 r.check(len(jd.read_history()) == before + 1, "the returned list is a copy")
 
+# Newest first by the record's own time, whatever order the file has: closing
+# a session archives old notes long after they went out.
+older = store.add("archived late", target="sid:order")
+newer = store.add("archived early", target="sid:order")
+jd.append_history("done", newer, ts="2026-08-30T12:00:00+03:00")
+jd.append_history("done", older, ts="2026-08-29T09:00:00+03:00")
+order = [rec["task"]["id"] for rec in jd.history_for_target("sid:order")]
+r.check(order == [newer["id"], older["id"]], "history is newest first by time", str(order))
+
 sys.exit(r.finish())

@@ -368,9 +368,16 @@ otherwise `xdotool` or the queue file.
 
 The bar at the left edge of a task row tells where the task is: grey while
 it waits its turn, blue once it has been handed to the session, amber while
-that session is busy on the latest note it received, green in the history
-once it is done. Hover the bar for the word. A sent task's row also says
-when it went out (the day too, if that was not today).
+the session is on that very note, green in the history once it is done.
+Hover the bar for the word. A sent task's row also says when it went out
+(the day too, if that was not today).
+
+A handed-over note finishes by itself: the hooks record which note a session
+is on, and the `Stop` that ends that turn archives it as done — unless the
+turn ended in a question, which keeps the note open until your answer's turn
+ends. Sessions found by the tmux scan have no hooks, so their notes stay
+"sent" until you press `✓` or run `ccdo done <id>`. Sent notes list newest
+first, and so does the history.
 
 ### Attaching an image or a file
 
