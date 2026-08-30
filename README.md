@@ -423,6 +423,21 @@ guessing layer is switched off entirely:
 If the `SOURCE` column in `ccdo sessions` says `hook` the match is exact;
 `scan` means it is still a guess from the tmux scan.
 
+### The status line
+
+`ccdo install-hooks` also routes Claude Code's status line through ccdo:
+`statusLine.command` becomes `ccdo statusline -- <what it was>`. Claude Code
+pipes one JSON document to that command on every update; ccdo keeps the few
+numbers worth showing on the session's record and hands the same JSON on to
+the previous command, so the terminal keeps the line it had. If there was no
+status line, ccdo draws a plain one itself.
+
+The window then shows a row of chips under a session's title — model and
+effort, context (`ctx 125.1k · 62%`), cost so far, the five-hour and weekly
+limits (`5h 30% · 7d 36%`), when the five-hour window resets, lines added and
+removed, and the worktree — refreshed as the status line is. Sessions found by
+the tmux scan have no status line to report, so they show none.
+
 ### Order
 
 The queue order is the only source of truth: **the first task is the next
@@ -760,7 +775,8 @@ finish something.
 
 ```bash
 ccdo add "text" [--target api] [--project name]   # --target accepts a session name
-ccdo install-hooks [--dry-run]      # install the Claude Code hooks
+ccdo install-hooks [--dry-run]      # install the Claude Code hooks and the status line
+ccdo statusline [-- <command>]      # status line entry point (Claude Code calls this, not you)
 ccdo sessions                       # live sessions: color, label, target, state
 ccdo auto <target> on|off           # switch auto (written per directory)
 ccdo hook <event>                   # hook entry point (Claude Code calls this, not you)

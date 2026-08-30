@@ -20,6 +20,7 @@ import shutil
 import sys
 import tempfile
 import textwrap
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTDIR = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "docs")
@@ -57,7 +58,17 @@ def seed():
     cfg = jd.load_config()
     store, reg = jd.Store(cfg), jd.Registry()
     reg.upsert("s1", target="%3", cwd="/home/you/dev/api", state="idle",
-               label="api-server", title="api-server", auto_advance=True)
+               label="api-server", title="api-server", auto_advance=True,
+               status=jd.statusline_summary({
+                   "model": {"display_name": "Fable 5"}, "effort": {"level": "high"},
+                   "cost": {"total_cost_usd": 9.32, "total_lines_added": 185,
+                            "total_lines_removed": 92},
+                   "context_window": {"used_percentage": 62,
+                                      "current_usage": {"input_tokens": 8500,
+                                                        "cache_read_input_tokens": 116600}},
+                   "rate_limits": {"five_hour": {"used_percentage": 30,
+                                                 "resets_at": time.time() + 2 * 3600 + 45 * 60},
+                                   "seven_day": {"used_percentage": 36}}}))
     reg.upsert("s2", target="sid:demo", cwd="/home/you/dev/web", state="busy",
                label="web-ui", title="web-ui")
     for text, priority in (

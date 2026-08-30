@@ -1542,6 +1542,7 @@ def registry_sessions(cfg):
             "session_id": rec.get("session_id"),
             "auto_advance": rec.get("auto_advance"),
             "current_task": rec.get("current_task"),
+            "status": rec.get("status"),
             "source": "hook",
         })
     out.sort(key=lambda s: s["target"])
@@ -1793,6 +1794,141 @@ def inbox_help_lines():
         ('ccdo add --target <session> "text"', True),
         (_("Session names: ccdo sessions. Nothing runs from here; the session's page sends the note."), False),
     ]
+
+
+def statusline_summary(data):
+    """The facts worth keeping from Claude Code's statusline JSON.
+
+    The full document is large and mostly transient; the window shows a
+    handful of numbers, so only those are written to the registry.
+    """
+    def pct(node):
+        v = (node or {}).get("used_percentage")
+        return int(round(float(v))) if isinstance(v, (int, float)) else None
+
+    def stamp(node):
+        v = (node or {}).get("resets_at")
+        return float(v) if isinstance(v, (int, float)) else None
+
+    cw = data.get("context_window") or {}
+    usage = cw.get("current_usage") or {}
+    ctx_tokens = sum(int(usage.get(k) or 0) for k in
+                     ("input_tokens", "cache_creation_input_tokens",
+                      "cache_read_input_tokens"))
+    limits = data.get("rate_limits") or {}
+    cost = data.get("cost") or {}
+    worktree = ((data.get("worktree") or {}).get("name")
+                or (data.get("workspace") or {}).get("git_worktree") or "")
+    return {
+        "model": (data.get("model") or {}).get("display_name") or "",
+        "effort": (data.get("effort") or {}).get("level") or "",
+        "ctx_pct": pct(cw),
+        "ctx_tokens": ctx_tokens or None,
+        "cost_usd": cost.get("total_cost_usd"),
+        "lines_added": cost.get("total_lines_added"),
+        "lines_removed": cost.get("total_lines_removed"),
+        "five_hour_pct": pct(limits.get("five_hour")),
+        "five_hour_resets_at": stamp(limits.get("five_hour")),
+        "seven_day_pct": pct(limits.get("seven_day")),
+        "worktree": worktree,
+        "at": time.time(),
+    }
+
+
+def short_tokens(n):
+    """15500 -> '15.5k', 3200000 -> '3.2M'."""
+    n = int(n or 0)
+    if n >= 1000000:
+        return "%.1fM" % (n / 1000000.0)
+    if n >= 1000:
+        return "%.1fk" % (n / 1000.0)
+    return str(n)
+
+
+def short_countdown(seconds):
+    """'2h 45m', '38m', or '' once the moment has passed."""
+    seconds = int(seconds)
+    if seconds <= 0:
+        return ""
+    hours, minutes = divmod(seconds // 60, 60)
+    if hours >= 24:
+        return "%dd %dh" % (hours // 24, hours % 24)
+    return "%dh %02dm" % (hours, minutes) if hours else "%dm" % minutes
+
+
+def status_chips(status, now=None):
+    """The chips under a session's title: model, context, cost, limits."""
+    if not status:
+        return []
+    now = time.time() if now is None else now
+    chips = []
+    if status.get("model"):
+        model = status["model"]
+        if status.get("effort"):
+            model += " · " + status["effort"]
+        chips.append(model)
+    ctx = []
+    if status.get("ctx_tokens"):
+        ctx.append(short_tokens(status["ctx_tokens"]))
+    if status.get("ctx_pct") is not None:
+        ctx.append("%d%%" % status["ctx_pct"])
+    if ctx:
+        chips.append(_("ctx %s") % " · ".join(ctx))
+    if isinstance(status.get("cost_usd"), (int, float)):
+        chips.append("$%.2f" % status["cost_usd"])
+    limits = []
+    if status.get("five_hour_pct") is not None:
+        limits.append("5h %d%%" % status["five_hour_pct"])
+    if status.get("seven_day_pct") is not None:
+        limits.append("7d %d%%" % status["seven_day_pct"])
+    if limits:
+        chips.append(" · ".join(limits))
+    if status.get("five_hour_resets_at"):
+        left = short_countdown(status["five_hour_resets_at"] - now)
+        if left:
+            chips.append(_("reset %s") % left)
+    added, removed = status.get("lines_added"), status.get("lines_removed")
+    if isinstance(added, int) and isinstance(removed, int) and (added or removed):
+        chips.append("+%d −%d" % (added, removed))
+    if status.get("worktree"):
+        chips.append("⎇ " + status["worktree"])
+    return chips
+
+
+def chip_rows(chips, budget=62):
+    """Break chips into rows that fit a card: each chip costs its text plus
+    the padding around it, measured in characters of the chip's font."""
+    rows, row, used = [], [], 0
+    for text in chips:
+        cost = len(text) + 5
+        if row and used + cost > budget:
+            rows.append(row)
+            row, used = [], 0
+        row.append(text)
+        used += cost
+    if row:
+        rows.append(row)
+    return rows
+
+
+def wrap_statusline(settings, exe):
+    """Route the status line through ccdo, keeping whatever drew it before.
+
+    Claude Code pipes its statusline JSON to one command; ccdo takes it,
+    keeps the summary, and hands the same JSON on to the previous command
+    so the terminal keeps showing what it showed. True when settings changed.
+    """
+    marker = "%s statusline" % exe
+    current = settings.get("statusLine")
+    if isinstance(current, dict) and current.get("type", "command") == "command":
+        cmd = str(current.get("command") or "").strip()
+        if "ccdo statusline" in cmd or marker in cmd:
+            return False
+        current["command"] = "%s -- %s" % (marker, cmd) if cmd else marker
+        current["type"] = "command"
+        return True
+    settings["statusLine"] = {"type": "command", "command": marker}
+    return True
 
 
 def session_folder(sess):
@@ -2973,6 +3109,41 @@ def hook_config(exe):
     }
 
 
+def run_statusline(rest):
+    """Claude Code's statusline command: keep the summary, pass the JSON on.
+
+    Whatever goes wrong here must not cost the user their status line, so
+    every step short of printing is wrapped.
+    """
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw or "{}")
+        if not isinstance(data, dict):
+            data = {}
+    except ValueError:
+        data = {}
+    sid = data.get("session_id")
+    try:
+        reg = Registry()
+        if sid and reg.get(sid) is not None:
+            reg.upsert(sid, status=statusline_summary(data))
+            ipc_send("refresh", timeout=0.3)
+    except Exception as e:
+        if DEBUG:
+            sys.stderr.write("[ccdo] statusline not kept: %s\n" % e)
+    passthrough = " ".join(rest[1:]).strip() if rest[:1] == ["--"] else ""
+    if passthrough:
+        try:
+            out = subprocess.run(passthrough, shell=True, input=raw.encode("utf-8"),
+                                 stdout=subprocess.PIPE, timeout=10)
+            sys.stdout.write(out.stdout.decode("utf-8", errors="replace"))
+        except Exception as e:
+            sys.stdout.write("ccdo: status line failed: %s" % e)
+        return 0
+    sys.stdout.write(" | ".join(status_chips(statusline_summary(data))))
+    return 0
+
+
 def install_hooks(dry_run=False):
     """Add the ccdo hooks to ~/.claude/settings.json, keeping any already there."""
     exe = shutil.which("ccdo") or os.path.abspath(sys.argv[0])
@@ -3007,12 +3178,17 @@ def install_hooks(dry_run=False):
         print(json.dumps({"hooks": wanted}, indent=2, ensure_ascii=False))
         return 0
 
+    wrapped = wrap_statusline(settings, exe)
+
     if os.path.exists(CLAUDE_SETTINGS):
         backup = CLAUDE_SETTINGS + ".ccdo-bak"
         shutil.copy2(CLAUDE_SETTINGS, backup)
         print("backup: %s" % backup)
     atomic_write(CLAUDE_SETTINGS, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
     print("wrote %d hook(s) -> %s" % (added, CLAUDE_SETTINGS))
+    if wrapped:
+        print("status line now passes through ccdo (model, context, cost, limits "
+              "show in the window)")
     print("Restart any running Claude Code sessions.")
     print("To check: type /hooks inside a session")
     return 0
@@ -3998,6 +4174,7 @@ def start_gui(use_statusicon=False):
                 border-radius: 11px; padding: 3px 10px; font-size: 10px;
                 color: {dim}; }}
     .jd-tabicon {{ color: {dim}; }}
+    .jd-statchip {{ font-family: {mono}; color: {text}; }}
     .jd-more {{ background: transparent; border-color: transparent;
                 color: {faint}; padding: 2px 6px; }}
     .jd-more:hover {{ color: {text}; background: {raised}; }}
@@ -4390,6 +4567,12 @@ def start_gui(use_statusicon=False):
             # in its own chip.
             self.chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             card.pack_start(self.chips, False, False, 0)
+            # What the status line knows: model, context, cost, limits. A
+            # FlowBox so the chips wrap instead of widening the window.
+            self.status_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            self.status_row.set_no_show_all(True)
+            self._status_at = None
+            card.pack_start(self.status_row, False, False, 0)
             if sess["target"] == INBOX:
                 # The inbox has no folder or target to show; the room goes
                 # to a few lines on what the page is for.
@@ -4686,6 +4869,28 @@ def start_gui(use_statusicon=False):
                 lbl.set_max_width_chars(22)
                 self.chips.pack_start(lbl, False, False, 0)
             self.chips.show_all()
+            self.build_status_row(sess)
+
+        def build_status_row(self, sess):
+            """Redraw the status chips when the status line has news."""
+            status = sess.get("status") or {}
+            if status.get("at") == self._status_at:
+                return
+            self._status_at = status.get("at")
+            for ch in self.status_row.get_children():
+                self.status_row.remove(ch)
+            chips = status_chips(status)
+            for texts in chip_rows(chips):
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+                for text in texts:
+                    lbl = Gtk.Label(label=text, xalign=0)
+                    lbl.get_style_context().add_class("jd-chip")
+                    lbl.get_style_context().add_class("jd-statchip")
+                    lbl.set_tooltip_text(_("From the Claude Code status line"))
+                    row.pack_start(lbl, False, False, 0)
+                self.status_row.pack_start(row, False, False, 0)
+                row.show_all()
+            self.status_row.set_visible(bool(chips))
 
         def on_tv_key(self, _w, ev):
             ctrl = ev.state & Gdk.ModifierType.CONTROL_MASK
@@ -4721,6 +4926,7 @@ def start_gui(use_statusicon=False):
             self.state_lbl.set_text(state_word(self.sess))
             self.state_dot.set_visible(bool(state_word(self.sess)))
             self.app.update_tab_mark(self.sess)
+            self.build_status_row(self.sess)
 
             n_pending = len(store.pending(k))
             auto_on = bool(self.sess.get("auto_advance"))
@@ -6385,6 +6591,9 @@ def main(argv):
 
     if cmd == "install-hooks":
         return install_hooks(dry_run="--dry-run" in rest)
+
+    if cmd == "statusline":
+        return run_statusline(rest)
 
     if cmd == "sessions":
         ss = discover_sessions(cfg)
