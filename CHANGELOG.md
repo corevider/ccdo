@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.51] - 2026-08-30
+
+### Fixed
+
+- **gui:** switching the last-used terminal tab to a session is opt-in (8cfcd89)
 ## [1.0.50] - 2026-08-30
 
 ### Added
