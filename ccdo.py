@@ -4274,6 +4274,9 @@ def start_gui(use_statusicon=False):
                 color: {text}; }}
     .jd-sub {{ font-size: 10px; color: {dim}; font-family: {mono}; }}
     .jd-hint {{ font-size: 10px; color: {faint}; }}
+    .jd-kbd {{ font-size: 9px; font-family: {mono}; color: {dim};
+               background: {raised}; border: 1px solid {border};
+               border-radius: 4px; padding: 0 4px; }}
     .jd-help {{ font-size: 11px; color: {dim}; }}
     .jd-cmd {{ font-size: 11px; color: {text}; font-family: {mono}; }}
     .jd-meta {{ font-size: 10px; color: {faint}; font-family: {mono}; }}
@@ -4751,16 +4754,23 @@ def start_gui(use_statusicon=False):
             card.pack_start(div, False, False, 0)
 
             bar2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            hint = Gtk.Label(label=_("Enter: Add  •  Shift+Enter: Newline  •  Ctrl+V: Image")
-                             if sess["target"] == INBOX else
-                             _("Enter: Add  •  Ctrl+Enter: Add + Send  •  "
-                               "Shift+Enter: Newline  •  Ctrl+V: Image"),
-                             xalign=0)
-            hint.get_style_context().add_class("jd-hint")
-            hint.set_ellipsize(Pango.EllipsizeMode.END)
-            hint.set_max_width_chars(30)
-            hint.set_width_chars(6)
+            # One badge per key, its action beside it: as a single line with
+            # dots between, the pairs ran into each other.
+            keys = [("Enter", _("Add"))]
+            if sess["target"] != INBOX:
+                keys.append(("Ctrl+Enter", _("Add + Send")))
+            keys += [("Shift+Enter", _("Newline")), ("Ctrl+V", _("Image"))]
+            hint = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
             hint.set_valign(Gtk.Align.CENTER)
+            for key, action in keys:
+                pair = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=3)
+                kbd = Gtk.Label(label=key)
+                kbd.get_style_context().add_class("jd-kbd")
+                pair.pack_start(kbd, False, False, 0)
+                lbl = Gtk.Label(label=action, xalign=0)
+                lbl.get_style_context().add_class("jd-hint")
+                pair.pack_start(lbl, False, False, 0)
+                hint.pack_start(pair, False, False, 0)
             bar2.pack_start(hint, True, True, 0)
             self.star = Gtk.ToggleButton()
             self.star.set_image(Gtk.Image.new_from_icon_name(
