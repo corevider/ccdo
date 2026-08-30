@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.38] - 2026-08-30
+
+### Added
+
+- **gui:** the ideabox hands notes out instead of running them; ⇄ asks first (69c919a)
 ## [1.0.37] - 2026-08-30
 
 ### Added
