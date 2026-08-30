@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.46] - 2026-08-30
+
+### Fixed
+
+- **gui:** rename and color work on a busy session; the ⋮ menu is the session's own (269bb4c)
 ## [1.0.45] - 2026-08-30
 
 ### Fixed
