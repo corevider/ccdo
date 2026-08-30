@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.43] - 2026-08-30
+
+### Added
+
+- **settings:** switches for the status line's chips and ccdo's own line (db20bb8)
 ## [1.0.42] - 2026-08-30
 
 ### Added
