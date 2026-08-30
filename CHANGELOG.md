@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.35] - 2026-08-30
+
+### Added
+
+- **gui:** sent rows say when the note went out; the README shows the ideabox (d917967)
 ## [1.0.34] - 2026-08-30
 
 ### Added
