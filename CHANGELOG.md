@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.36] - 2026-08-30
+
+### Added
+
+- **gui:** close an ended session's tab; send notes back to the ideabox (5f158ce)
 ## [1.0.35] - 2026-08-30
 
 ### Added
