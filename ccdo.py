@@ -1174,7 +1174,8 @@ def resolve_pane_target(session_id=None):
 
 
 def is_tmux_target(target):
-    return bool(target) and not str(target).startswith(SID_PREFIX)
+    """Does the target name a tmux pane? The inbox and a bare session id do not."""
+    return bool(target) and target != INBOX and not str(target).startswith(SID_PREFIX)
 
 
 def session_target_for_cwd(cfg, cwd=None):
@@ -1929,6 +1930,8 @@ def raise_terminal_window(session):
 def open_session_terminal(cfg, target):
     """Show the session's terminal: the pane is selected, and either the
     window that already shows it comes up or a new terminal attaches."""
+    if not is_tmux_target(target):
+        return False, _("no tmux session for %s") % target
     session = tmux_session_of(target)
     if not session:
         return False, _("no tmux session for %s") % target
