@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.52] - 2026-08-30
+
+### Added
+
+- **cli:** install-window-calls asks GNOME Shell for the extension (c3061d5)
 ## [1.0.51] - 2026-08-30
 
 ### Fixed
