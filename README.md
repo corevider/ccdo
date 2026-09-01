@@ -1,6 +1,6 @@
 # ccdo
 
-A note and task queue that lives in the system tray. The point: while the
+A note and task queue that lives in the system tray. CHANGED ON THE BRANCH.
 Claude Code CLI is busy with one thing, park the next idea **without
 interrupting the session**, then hand it over when the current work finishes.
 
