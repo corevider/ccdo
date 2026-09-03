@@ -9,6 +9,11 @@ release's notes on GitHub and its entry here say the same thing.
 
 <!-- releases -->
 
+## [1.0.53] - 2026-09-03
+
+### Fixed
+
+- **gui:** give the terminal a moment to show the session's name in its title (677dc9d)
 ## [1.0.52] - 2026-08-30
 
 ### Added
