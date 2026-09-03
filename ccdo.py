@@ -2048,17 +2048,22 @@ def focus_terminal_via_shell(session):
     run_cmd(["tmux", "set-option", "-t", session, "set-titles", "on"])
     try:
         from gi.repository import GLib
-        raw = proxy.call_sync("List", None, 0, 2000, None).unpack()[0]
-        for win in json.loads(raw):
-            wid = win.get("id")
-            if wid is None:
-                continue
-            title = proxy.call_sync("GetTitle", GLib.Variant("(u)", (int(wid),)),
-                                    0, 2000, None).unpack()[0]
-            if title_names_session(title, session):
-                proxy.call_sync("Activate", GLib.Variant("(u)", (int(wid),)),
-                                0, 2000, None)
-                return True
+        # The title the terminal shows follows set-titles with a redraw's
+        # delay; the first look right after switching it on can miss.
+        for attempt in range(3):
+            if attempt:
+                time.sleep(0.35)
+            raw = proxy.call_sync("List", None, 0, 2000, None).unpack()[0]
+            for win in json.loads(raw):
+                wid = win.get("id")
+                if wid is None:
+                    continue
+                title = proxy.call_sync("GetTitle", GLib.Variant("(u)", (int(wid),)),
+                                        0, 2000, None).unpack()[0]
+                if title_names_session(title, session):
+                    proxy.call_sync("Activate", GLib.Variant("(u)", (int(wid),)),
+                                    0, 2000, None)
+                    return True
     except Exception as e:
         if DEBUG:
             sys.stderr.write("[ccdo] window calls: %s\n" % e)
